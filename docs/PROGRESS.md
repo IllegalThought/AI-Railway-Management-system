@@ -4,14 +4,14 @@ Last updated: 2026-10-20
 
 ## Current status
 
-Repository documentation is ready for Phase 1 planning. Phase 1 has not been implemented. Git initialization remains outstanding because the managed environment did not permit creation of the `.git` directory.
+Phase 1 implementation and runtime validation are complete. The backend configuration, persistence foundation, API contract, migrations, initialization workflow, and automated tests are verified.
 
 ## Phase tracking
 
 | Phase | Status | Scope | Evidence |
 | --- | --- | --- | --- |
-| Repository foundation | Partially complete | Development rules, documentation baseline, ignore rules, and environment template are complete; Git initialization is blocked by filesystem permissions | `AGENTS.md`, `docs/`, `.gitignore`, `.env.example` |
-| Phase 1 | Not started | Awaiting an explicit Phase 1 request and requirements | No application code exists yet |
+| Repository foundation | Complete | Git repository, development rules, documentation baseline, ignore rules, and environment template | `AGENTS.md`, `docs/`, `.gitignore`, `.env.example`, `.git/` |
+| Phase 1 | Complete | Backend architecture, database foundation, data models, API setup, migrations, initialization, seed data, and tests | `backend/app/`, `backend/alembic/`, `backend/tests/`, `backend/requirements.txt` |
 
 ## Completed
 
@@ -19,15 +19,33 @@ Repository documentation is ready for Phase 1 planning. Phase 1 has not been imp
 - Documented the intended system architecture and deployment targets.
 - Added safe ignore rules for the planned Python and Node.js toolchains.
 - Added an environment-variable template containing no secrets.
+- Added a modular FastAPI application with typed health response, structured error handling, OpenAPI documentation, and environment-based configuration.
+- Added environment-controlled CORS with wildcard origins rejected in production.
+- Added SQLAlchemy models for simulation sessions, trains, platforms, compatibility, track nodes and edges, scheduling plans, assignments, incidents, and operational events.
+- Scoped operational records to isolated simulation sessions.
+- Defined integer-minute scheduling and half-open occupancy intervals.
+- Added reusable Pydantic validation for records and scheduling inputs.
+- Added SQLite and PostgreSQL configuration support with SQLite foreign-key enforcement and psycopg v3 URL normalization.
+- Added an initial Alembic migration.
+- Added a database initialization command and idempotent synthetic seed data.
+- Added Pytest coverage for health and OpenAPI, structured API errors, validation, persistence, session isolation, initialization, seeding, and duplicate handling.
+- Isolated pytest configuration from normal runtime settings and ensured factory-injected settings are used consistently by request dependencies.
+- Added backend setup and exact run instructions.
 
 ## Known gaps
 
-- Frontend and backend applications have not been scaffolded.
-- Dependencies have not been declared or installed.
-- Database models and migrations do not exist.
-- Automated tests and deployment configuration do not exist.
-- Phase 1 acceptance criteria have not yet been supplied in this repository.
-- Git is not initialized; the managed environment rejected creation of `.git` with an "Operation not permitted" error.
+- The Next.js frontend is intentionally not implemented.
+- CSP scheduling, A* routing, and simulation behavior are intentionally not implemented.
+- OR-Tools and NetworkX are deferred until the phases that implement optimization and routing.
+- Deployment service manifests are not part of Phase 1.
+
+## Phase 1 validation
+
+- `python3 -m compileall -q app tests alembic`: passed.
+- `git diff --check`: passed.
+- English/ASCII content scan: passed.
+- `alembic upgrade head` against an isolated SQLite database: passed.
+- `python -m pytest -q`: passed (17 tests: all 16 existing tests plus one configuration regression test).
 
 ## Update policy
 
