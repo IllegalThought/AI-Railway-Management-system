@@ -25,15 +25,18 @@ SQLAlchemy persistence layer
   +--> PostgreSQL (production)
 ```
 
-## Implemented Phase 1 responsibilities
+## Implemented responsibilities
 
-### Frontend (future phase)
+### Frontend (Phase 2)
 
-- Present a professional operations interface using Next.js and TypeScript.
-- Use Tailwind CSS and shadcn/ui as the design-system foundation.
-- Use Lucide for icons and Recharts for operational visualizations.
-- Validate inputs and display API-derived results without duplicating domain logic.
-- Keep all user-facing content in English.
+- Presents a professional, responsive operations workspace using the Next.js App Router, React, and strict TypeScript.
+- Uses Tailwind CSS and shadcn/ui-compatible primitives as a modular design-system foundation, with Lucide icons and Recharts available for verified future datasets.
+- Provides a shared application shell with desktop and mobile navigation, a top header, consistent workspace status language, loading states, unavailable states, tables, KPI cards, and toast notifications.
+- Exposes routes for Overview, Live Operations, Dispatch Board, Network Monitor, Incident Center, Trains & Platforms, Performance Analytics, and Settings.
+- Uses `NEXT_PUBLIC_API_BASE_URL` as the public backend origin and a typed client boundary in `frontend/lib/api.ts`.
+- Calls only the implemented `GET /api/health` endpoint. UI areas that require unimplemented operational read APIs explicitly report that data is unavailable.
+- Keeps frontend presentation and transport concerns separate from backend domain and optimization logic.
+- Keeps all user-facing content in English and identifies the product as a synthetic simulation.
 
 ### Backend
 
@@ -69,26 +72,43 @@ All scheduling values use integer minutes. Occupancy and horizon intervals are h
 
 ## Repository shape
 
-The application structure will be decided during the relevant implementation phase. The expected high-level boundaries are:
-
 ```text
 backend/app/    FastAPI application, models, schemas, services, and database code
 backend/alembic Database migration environment and revisions
 backend/tests/  Pytest suite
+frontend/app/   Next.js routes, root layout, loading state, and global visual tokens
+frontend/components/ Application shell, Overview modules, and reusable UI primitives
+frontend/lib/   Typed API transport, navigation definitions, and shared utilities
 docs/           Architecture and delivery tracking
 ```
 
-The frontend has not been created because it is outside Phase 1.
+The frontend is independently deployable to Vercel. It contains no server-side domain logic and communicates with the Render-hosted FastAPI service over HTTPS/JSON.
 
 ## Configuration
 
-Runtime configuration comes from environment variables. Local secret-bearing `.env` files are ignored; `.env.example` documents variable names without credentials. Browser-exposed variables are limited to non-secret values. PostgreSQL URLs are normalized to the psycopg v3 SQLAlchemy driver. Production configuration rejects wildcard CORS origins.
+Runtime configuration comes from environment variables. Local secret-bearing `.env` files are ignored; `.env.example` documents variable names without credentials. Browser-exposed variables are limited to the non-secret `NEXT_PUBLIC_API_BASE_URL` backend origin. PostgreSQL URLs are normalized to the psycopg v3 SQLAlchemy driver. Production configuration rejects wildcard CORS origins.
+
+## Frontend data flow
+
+```text
+Overview client component
+  |
+  v
+Typed API client (`frontend/lib/api.ts`)
+  |
+  | GET {NEXT_PUBLIC_API_BASE_URL}/api/health
+  v
+FastAPI health route -> SQL `SELECT 1`
+```
+
+The health payload is validated at the client boundary before display. No operational collection endpoint exists yet, so train, assignment, incident, and event panels do not query persistence directly or synthesize placeholder records.
 
 ## Quality boundaries
 
 - Business and optimization logic must be testable independently of HTTP and UI layers.
 - Important backend behavior requires Pytest coverage.
 - Frontend changes require type checking and a production build.
+- Frontend transport behavior requires focused automated tests and inaccessible data must produce explicit unavailable states.
 - API contracts must use explicit schemas rather than unstructured payloads.
 - AI or optimization output must be produced by working algorithms, never hardcoded demonstrations.
 - Controls must be wired to real behavior before they are presented as available.
