@@ -66,16 +66,18 @@ Do not put Neon, Render, or Vercel credentials in Git, GitHub Actions variables,
 1. Sign in to Neon and create a project and production branch.
 2. Place the Neon region close to the Render service region to reduce database latency.
 3. In **Connection Details**, select Python/SQLAlchemy-compatible connection information.
-4. Copy a TLS-enabled PostgreSQL URL. Keep it only in Render's secret environment settings.
+4. Copy a TLS-enabled PostgreSQL URL. Keep it only in a local ignored environment file or Render's secret environment settings.
 5. Prefer the direct Neon endpoint for schema migrations. A pooled endpoint can be used for application traffic when needed; RailOps AI also maintains a small bounded SQLAlchemy pool.
 
 The value should have this general form:
 
 ```text
-postgresql://USER:PASSWORD@ENDPOINT.neon.tech/DATABASE?sslmode=require
+postgresql://USER:PASSWORD@ENDPOINT.neon.tech/DATABASE?sslmode=require&channel_binding=require
 ```
 
-The backend converts `postgres://` and `postgresql://` to SQLAlchemy's `postgresql+psycopg://` form internally. Do not paste the URL into Vercel.
+The backend uses psycopg 3 and converts `postgres://` and `postgresql://` to SQLAlchemy's `postgresql+psycopg://` form internally. Query parameters issued by Neon, including `sslmode` and `channel_binding`, are preserved. Production configuration rejects PostgreSQL URLs that do not use `sslmode=require`, `verify-ca`, or `verify-full`.
+
+Do not paste the URL into Vercel, source code, Git commands, issue trackers, screenshots, or this project's documentation. In particular, never create a `NEXT_PUBLIC_DATABASE_URL`; every `NEXT_PUBLIC_*` variable is available to browser code.
 
 Neon data survives Render restarts and redeployments because it is stored outside the Render filesystem. Do not use a Render-local SQLite file in production.
 
@@ -98,7 +100,7 @@ The Blueprint configures:
 - health check: `/api/health`
 - graceful shutdown window: 30 seconds
 
-The production startup script runs `alembic upgrade head`, verifies ORM/schema compatibility, and then binds Uvicorn to `0.0.0.0:$PORT`. Migrations are idempotent and never reset existing records. For a paid Render service, moving migrations to a Render pre-deploy command is also valid; keep the schema verification before application startup.
+The production startup script runs `alembic upgrade head`, verifies ORM/schema compatibility, and then binds Uvicorn to `0.0.0.0:$PORT`. It does not run a database reset or automatic seed. Alembic skips revisions already recorded as applied; pending revision data transformations still require the backup and review described below. For a paid Render service, moving migrations to a Render pre-deploy command is also valid; keep the schema verification before application startup.
 
 ### Manual web-service method
 
@@ -130,35 +132,88 @@ Use these exact Render fields:
 
 Render supplies `PORT`. Do not define it manually unless Render requires an override.
 
-Production startup rejects SQLite, wildcard CORS, non-HTTPS CORS origins, and origins containing paths, queries, or fragments.
+Production startup rejects SQLite, PostgreSQL without enforced TLS, wildcard CORS, non-HTTPS CORS origins, and origins containing paths, queries, or fragments.
 
-## 5. Migrations and optional demo seed
+## 5. Migrate the Neon database
+
+From a trusted workstation, use the repository's guarded migration command with the direct Neon connection string:
+
+```bash
+cd backend
+python scripts/migrate_neon.py
+```
+
+The script prompts for the URL without echoing it and never saves or prints it. It rejects non-PostgreSQL targets, non-Neon hosts, pooled Neon endpoints, and connections without enforced TLS. Before any connection or migration, it displays only the validated host and database name and requires you to type `MIGRATE`. It then performs a read-only schema preflight, runs the existing Alembic chain through `head`, and verifies the resulting schema. On failure it reports a sanitized error and does not run any reset, downgrade, deletion, or cleanup command.
+
+For a new database, successful verification reports Alembic head `20261020_0006`. Do not use `alembic stamp head`: it records a revision without creating tables. The script does not seed data and does not copy records from local SQLite.
+
+The committed revision chain was reviewed for PostgreSQL portability. It uses SQLAlchemy types, foreign keys, indexes, check constraints, and SQLAlchemy Core data updates rather than SQLite-only SQL. Revisions `20261020_0004` and `20261020_0005` read and update existing rows, so migrations must run online; offline `alembic upgrade --sql` generation is not supported. The interactive command is the final environment-specific verification because no Neon credentials are stored in this repository.
+
+If the Neon database already contains important data, create a Neon backup or temporary branch before upgrading and verify it first. Revision `20261020_0004` intentionally rebuilds legacy synthetic topology rows while preserving their owning workspaces. The guarded script refuses to cross that revision when legacy topology rows exist, leaving the database untouched for an owner-reviewed migration plan. It also refuses RailOps AI tables that exist without Alembic revision tracking.
+
+### Optional manual connection check
+
+For a trusted workstation, configure the secret without putting it directly in a command that may be retained in shell history. Either create the already-ignored `backend/.env` file or use a hidden shell prompt.
+
+### Ignored local environment file
+
+```bash
+cd backend
+cp -n .env.example .env
+chmod 600 .env
+${EDITOR:-vi} .env
+```
+
+The `-n` option preserves an existing `.env`. Set `DATABASE_URL` in that file to the direct Neon URL. Keep `APP_ENV=development` for this pre-deployment check so no production frontend origin is required. Confirm the file is ignored with `git check-ignore .env`. Never use `git add -f` on it.
+
+### Hidden shell prompt
+
+```bash
+cd backend
+printf 'Neon DATABASE_URL: '
+IFS= read -r -s DATABASE_URL
+printf '\n'
+export DATABASE_URL
+```
+
+The prompt does not echo the URL and the command itself contains no credential. Remove it from the shell when finished with `unset DATABASE_URL`.
+
+Install the declared backend dependencies, then run the connection-only probe before changing the schema:
+
+```bash
+python -m pip install -r requirements.txt
+python -m app.database.check_connection
+```
+
+The check executes only `SELECT 1`. Its output contains the database backend and success or failure, never the URL, hostname, username, password, or driver exception. A successful check proves connectivity, not schema compatibility. The interactive migration script already performs its own connection through Alembic, so this separate check is optional.
+
+### Render migration behavior
 
 The start script automatically applies committed migrations. To migrate manually from a Render shell or a trusted workstation:
 
 ```bash
 cd backend
-DATABASE_URL='YOUR_NEON_URL' python -m alembic upgrade head
-DATABASE_URL='YOUR_NEON_URL' python -m app.database.verify_schema
+python -m app.database.check_connection
+python -m alembic upgrade head
+python -m app.database.verify_schema
 ```
 
-Run migrations online against the target database. Offline `alembic upgrade --sql` generation is not supported because the legacy Phase 5 migration reads and transforms existing session topology rows.
+On Render, set `DATABASE_URL` only through the service's secret environment settings before running these commands. Never print it in logs. The production start script performs the same upgrade and verification gates without resetting data.
+
+## 6. Optional demo seed
 
 The normal web experience lazily creates isolated synthetic data for each new UUID workspace. A shared fixed demo workspace is optional and is not required by the frontend. To create it once:
 
 ```bash
 cd backend
-APP_ENV=production \
-DATABASE_URL='YOUR_NEON_URL' \
-BACKEND_CORS_ORIGINS='https://YOUR_PROJECT.vercel.app' \
 python -m app.database.seed_demo
 ```
 
-The seed command is idempotent. Repeating it reports that the data exists and changes no records. `app.database.init_db` is intentionally disabled in production so deployments cannot bypass Alembic migration history.
+Run this only after the same shell or Render service has privately configured `DATABASE_URL`. The seed command is idempotent. Repeating it reports that the data exists and changes no records. `app.database.init_db` is intentionally disabled in production so deployments cannot bypass Alembic migration history.
 
 Never run a scenario restore as a database initialization step. Scenario restore affects only the UUID workspace supplied in the request header, but it intentionally replaces that workspace's synthetic records.
 
-## 6. Deploy the Next.js frontend to Vercel
+## 7. Deploy the Next.js frontend to Vercel
 
 1. In Vercel, choose **Add New Project** and import the same GitHub repository.
 2. Set **Root Directory** to `frontend`.
@@ -177,7 +232,7 @@ The value must be an origin only: no `/api`, path, query, fragment, or trailing 
 
 Vercel reads `frontend/vercel.json`, runs `npm ci` and `npm run build`, and applies baseline browser response headers. Next.js App Router owns all application routes, so direct navigation and page refreshes do not require custom rewrite rules.
 
-## 7. Configure exact CORS origins
+## 8. Configure exact CORS origins
 
 After Vercel assigns the production URL, set Render's `BACKEND_CORS_ORIGINS` to the exact origin:
 
@@ -195,7 +250,7 @@ Do not use `*`. Vercel preview deployments receive changing hostnames; either ad
 
 After changing CORS, redeploy or restart Render and test a browser request from the actual Vercel origin.
 
-## 8. Deployment testing
+## 9. Deployment testing
 
 Replace the example hosts below with the created services.
 
@@ -240,7 +295,7 @@ Mutate only a disposable test workspace and confirm the second workspace remains
 7. Refresh every route directly and confirm it remains available.
 8. Redeploy Render and confirm the same browser workspace still contains its records.
 
-## 9. Troubleshooting
+## 10. Troubleshooting
 
 ### Render reports a missing `PORT`
 
@@ -282,7 +337,7 @@ Public requests are intentionally bounded to 500,000 CSP nodes and 15 seconds of
 
 Confirm Render uses Neon PostgreSQL rather than SQLite and that the production `DATABASE_URL` did not change to another Neon branch.
 
-## 10. Security and operational limitations
+## 11. Security and operational limitations
 
 - UUID demo workspaces isolate data but are not authenticated accounts.
 - No global reset or unrestricted database administration endpoint is exposed.
@@ -291,7 +346,7 @@ Confirm Render uses Neon PostgreSQL rather than SQLite and that the production `
 - Before unrestricted public use, add authentication, authorization, server-issued session expiry, rate limiting, abuse monitoring, and retention policies.
 - Use Neon backups or branches before high-risk migrations and monitor Render logs, latency, database connections, 409 conflicts, 413 responses, and solver duration.
 
-## 11. External permissions still required
+## 12. External permissions still required
 
 Repository preparation does not create external services. The repository owner must authenticate with GitHub, Neon, Render, and Vercel; create or select the projects; enter secrets; authorize Git access; and verify the resulting live URLs. Do not report deployment success until those live checks pass.
 

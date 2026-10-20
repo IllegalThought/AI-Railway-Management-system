@@ -78,8 +78,16 @@ class Settings(BaseSettings):
 
     @model_validator(mode="after")
     def validate_production_database(self) -> "Settings":
-        if self.app_env == "production" and make_url(self.database_url).get_backend_name() != "postgresql":
-            raise ValueError("Production requires a PostgreSQL DATABASE_URL.")
+        if self.app_env == "production":
+            database_url = make_url(self.database_url)
+            if database_url.get_backend_name() != "postgresql":
+                raise ValueError("Production requires a PostgreSQL DATABASE_URL.")
+            ssl_mode = database_url.query.get("sslmode", "").lower()
+            if ssl_mode not in {"require", "verify-ca", "verify-full"}:
+                raise ValueError(
+                    "Production PostgreSQL connections require sslmode=require, "
+                    "verify-ca, or verify-full."
+                )
         return self
 
     @computed_field

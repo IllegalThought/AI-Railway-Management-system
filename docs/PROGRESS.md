@@ -1,6 +1,6 @@
 # RailOps AI Progress
 
-Last updated: 2026-10-20
+Last updated: 2026-10-21
 
 ## Current status
 
@@ -270,8 +270,8 @@ Phases 1 through 9 are complete at repository level. RailOps AI now includes pro
 
 ## Phase 9 validation
 
-- `.venv/bin/python -m compileall -q app tests alembic`: passed.
-- `.venv/bin/pytest -q`: passed (71 tests; 7 upstream Python 3.14/Starlette/SQLite deprecation warnings).
+- `.venv/bin/python -m compileall -q app tests alembic scripts`: passed.
+- `.venv/bin/pytest -q`: passed (85 tests; 7 upstream Python 3.14/Starlette/SQLite deprecation warnings).
 - PostgreSQL URL normalization, production database/CORS rejection, bounded pool construction, and full SQLAlchemy PostgreSQL DDL compilation passed automated tests.
 - Render Blueprint, production start script, Vercel JSON, environment separation, and secret-free GitHub workflow passed deployment regression tests.
 - `render.yaml` parsed successfully as YAML; `frontend/vercel.json` parsed successfully as JSON; the production Bash script passed syntax validation.
@@ -284,6 +284,10 @@ Phases 1 through 9 are complete at repository level. RailOps AI now includes pro
 - Git tracking and secret-pattern checks found no committed database, local environment, build-output, dependency, private-key, or credential files.
 - A local PostgreSQL service was not available, and no Neon credentials were supplied. Real PostgreSQL migration, live CORS, persistence-across-redeploy, and public URL checks remain manual deployment gates.
 - PostgreSQL offline SQL generation is not supported because migration `20261020_0004` performs an online data transformation. Render uses the required online migration path.
+- Added a read-only `python -m app.database.check_connection` probe that executes `SELECT 1` and deliberately omits connection URLs, credentials, hostnames, and driver exceptions from output.
+- Confirmed the declared runtime driver is psycopg 3, standard Neon URLs normalize to `postgresql+psycopg`, and Neon `sslmode` and `channel_binding` parameters are preserved. Production now requires a TLS-enforcing PostgreSQL `sslmode`.
+- Reviewed all six migrations for PostgreSQL portability. They contain no SQLite-only SQL; the two data-transforming revisions require the documented online migration path. No Neon connection or migration was attempted without owner credentials.
+- Added `python scripts/migrate_neon.py`, which securely prompts for a direct Neon URL, validates the target and TLS settings, requires explicit confirmation, rejects ambiguous or legacy data-rebuilding states, applies the existing Alembic chain, and verifies the resulting schema without storing or printing credentials.
 
 ## Phase 9 handoff
 

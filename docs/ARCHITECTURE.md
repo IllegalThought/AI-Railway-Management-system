@@ -108,7 +108,7 @@ Incident replanning reads the active applied plan and persisted simulation minut
 backend/app/    FastAPI application, models, schemas, services, and database code
 backend/alembic Database migration environment and revisions
 backend/tests/  Pytest suite
-backend/scripts/ Render-compatible production startup and migration gate
+backend/scripts/ Render startup gate and guarded interactive Neon migration command
 frontend/app/   Next.js routes, root layout, loading state, and global visual tokens
 frontend/components/ Application shell, Overview modules, and reusable UI primitives
 frontend/lib/   Typed API transport, navigation definitions, and shared utilities
@@ -126,6 +126,8 @@ Runtime configuration comes from environment variables. Local secret-bearing `.e
 PostgreSQL connections use pre-ping plus bounded pool size, overflow, timeout, and recycle values. The default five-connection pool with five overflow slots avoids unbounded Render-to-Neon connections. Neon TLS remains part of the secret `DATABASE_URL`, normally through `sslmode=require`.
 
 `python -m app.database.verify_schema` is the development schema gate. It reports the exact active SQLite path, compares the current Alembic revision to repository heads, checks every mapped table and column, and uses Alembic metadata comparison to detect model/schema drift. A migration revision at head is not sufficient by itself; the structural comparison must also pass.
+
+`python scripts/migrate_neon.py` is the owner-operated production migration gate. It accepts the direct Neon URL through a hidden prompt, validates the PostgreSQL/Neon/direct/TLS properties without connecting, shows only the target host and database, and requires explicit confirmation. A read-only preflight rejects unversioned application tables and refuses to cross the legacy topology-rebuilding revision when topology records exist. Safe targets receive the same Alembic chain plus structural schema verification. The command never stores credentials or performs resets, downgrades, or cleanup.
 
 ## Frontend data flow
 

@@ -1,5 +1,6 @@
 import pytest
 from pydantic import ValidationError
+from sqlalchemy.engine import make_url
 
 from app.config import Settings
 from app.schemas.analytics import BenchmarkRequest
@@ -116,6 +117,29 @@ def test_postgresql_url_uses_declared_psycopg_driver() -> None:
     settings = Settings(DATABASE_URL="postgres://user:secret@database.example/railops")
 
     assert settings.database_url.startswith("postgresql+psycopg://")
+
+
+def test_production_postgresql_requires_tls() -> None:
+    with pytest.raises(ValueError, match="require sslmode"):
+        Settings(
+            APP_ENV="production",
+            DATABASE_URL="postgresql://railops:placeholder@database.example/railops",
+            BACKEND_CORS_ORIGINS="https://railops.example",
+        )
+
+
+def test_neon_connection_options_survive_driver_normalization() -> None:
+    settings = Settings(
+        DATABASE_URL=(
+            "postgresql://railops:placeholder@ep-example.neon.tech/railops"
+            "?sslmode=require&channel_binding=require"
+        )
+    )
+
+    url = make_url(settings.database_url)
+    assert url.drivername == "postgresql+psycopg"
+    assert url.query["sslmode"] == "require"
+    assert url.query["channel_binding"] == "require"
 
 
 def test_relative_sqlite_url_is_anchored_to_backend_directory() -> None:

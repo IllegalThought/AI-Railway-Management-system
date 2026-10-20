@@ -53,3 +53,37 @@ def test_github_verification_workflow_contains_no_deployment_secrets() -> None:
     assert "python -m pytest -q" in workflow
     assert "npm run build" in workflow
     assert "secrets." not in workflow
+
+
+def test_migrations_do_not_contain_sqlite_only_sql() -> None:
+    migration_directory = REPOSITORY_ROOT / "backend/alembic/versions"
+    migrations = sorted(migration_directory.glob("*.py"))
+
+    assert len(migrations) == 6
+    for migration in migrations:
+        source = migration.read_text(encoding="utf-8")
+        assert "PRAGMA" not in source
+        assert "sqlite_" not in source
+
+
+def test_backend_declares_psycopg_three_and_safe_connection_probe() -> None:
+    requirements = (REPOSITORY_ROOT / "backend/requirements.txt").read_text(
+        encoding="utf-8"
+    )
+    deployment_guide = (REPOSITORY_ROOT / "docs/DEPLOYMENT.md").read_text(
+        encoding="utf-8"
+    )
+
+    assert "psycopg[binary]>=3.2,<4.0" in requirements
+    assert "python -m app.database.check_connection" in deployment_guide
+    assert "NEXT_PUBLIC_DATABASE_URL" in deployment_guide
+
+
+def test_interactive_neon_migration_command_is_documented() -> None:
+    migration_script = REPOSITORY_ROOT / "backend/scripts/migrate_neon.py"
+    deployment_guide = (REPOSITORY_ROOT / "docs/DEPLOYMENT.md").read_text(
+        encoding="utf-8"
+    )
+
+    assert migration_script.is_file()
+    assert "python scripts/migrate_neon.py" in deployment_guide
