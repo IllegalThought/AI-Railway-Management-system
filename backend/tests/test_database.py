@@ -1,5 +1,6 @@
 from sqlalchemy import select, text
 
+from app.database import session as database_session
 from app.models import Platform, Train
 from app.schemas.railway import PlatformCreate, TrainCreate
 from app.services.records import create_platform, create_simulation_session, create_train
@@ -62,4 +63,29 @@ def test_train_persists_platform_compatibility(database) -> None:
     stored = database.scalar(select(Train).where(Train.id == train.id))
     assert stored is not None
     assert stored.compatible_platforms[0].platform.code == "P1"
+
+
+def test_request_database_session_rolls_back_after_an_error(monkeypatch) -> None:
+    class FakeSession:
+        rolled_back = False
+        closed = False
+
+        def rollback(self) -> None:
+            self.rolled_back = True
+
+        def close(self) -> None:
+            self.closed = True
+
+    fake = FakeSession()
+    monkeypatch.setattr(database_session, "SessionLocal", lambda: fake)
+    dependency = database_session.get_db()
+    assert next(dependency) is fake
+
+    try:
+        dependency.throw(RuntimeError("request failed"))
+    except RuntimeError:
+        pass
+
+    assert fake.rolled_back is True
+    assert fake.closed is True
 

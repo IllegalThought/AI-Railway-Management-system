@@ -17,6 +17,8 @@ def train_response(train: Train) -> TrainResponse:
         ),
         service_status=train.service_status,
         delay_minutes=train.delay_minutes,
+        origin_node_code=train.origin_node_code,
+        destination_node_code=train.destination_node_code,
         created_at=train.created_at,
         updated_at=train.updated_at,
     )

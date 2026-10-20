@@ -1,3 +1,5 @@
+import logging
+
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
@@ -5,6 +7,9 @@ from pydantic import ValidationError
 from sqlalchemy.exc import SQLAlchemyError
 
 from app.services.exceptions import ApplicationError
+
+
+logger = logging.getLogger("railops.api")
 
 
 def register_error_handlers(app: FastAPI) -> None:
@@ -53,8 +58,14 @@ def register_error_handlers(app: FastAPI) -> None:
 
     @app.exception_handler(SQLAlchemyError)
     async def handle_database_error(
-        _request: Request, _exc: SQLAlchemyError
+        request: Request, exc: SQLAlchemyError
     ) -> JSONResponse:
+        logger.error(
+            "Database request failed: %s %s",
+            request.method,
+            request.url.path,
+            exc_info=(type(exc), exc, exc.__traceback__),
+        )
         return JSONResponse(
             status_code=503,
             content={

@@ -27,7 +27,7 @@ SQLAlchemy persistence layer
 
 ## Implemented responsibilities
 
-### Frontend (Phases 2–4)
+### Frontend (Phases 2–5)
 
 - Presents a professional, responsive operations workspace using the Next.js App Router, React, and strict TypeScript.
 - Uses Tailwind CSS and shadcn/ui-compatible primitives as a modular design-system foundation, with Lucide icons and Recharts available for verified future datasets.
@@ -36,7 +36,8 @@ SQLAlchemy persistence layer
 - Uses `NEXT_PUBLIC_API_BASE_URL` as the public backend origin and a typed client boundary in `frontend/lib/api.ts`.
 - Uses a browser-generated UUID stored under `railops-session-id` and sends it as `X-RailOps-Session` on operational API requests.
 - Provides fully integrated train management, platform availability management, scenario restore, and real operational Overview metrics.
-- Provides a Dispatch Board backed by persisted solver output, with a horizontally scrollable platform timeline, interactive train selection, solver lifecycle controls, validation findings, and provisional apply state.
+- Provides a Dispatch Board backed by persisted solver output, with a horizontally scrollable platform timeline, interactive train selection, solver lifecycle controls, combined validation findings, and apply state.
+- Provides an SVG Network Monitor for directed topology, selected paths, train/platform placement, blocked resources, movement indicators, reservation intervals, and inference explanations.
 - Keeps frontend presentation and transport concerns separate from backend domain and optimization logic.
 - Keeps all user-facing content in English and identifies the product as a synthetic simulation.
 
@@ -50,6 +51,8 @@ SQLAlchemy persistence layer
 - Resolves every operational request to an isolated simulation session through `X-RailOps-Session`; new session UUIDs receive the default 20-train, 5-platform scenario.
 - Keeps scenario generation and record mutation in service modules; route handlers remain transport-focused.
 - Keeps optimization in `app/ai`: a custom CSP uses MRV, recursive backtracking, and forward checking; FCFS provides a deterministic baseline; OR-Tools CP-SAT uses optional intervals and non-overlap constraints; an independent validator rechecks all persisted assignments.
+- Keeps route intelligence in `app/ai` and `app/services/network.py`: a custom A* uses an admissible geometric heuristic, NetworkX Dijkstra independently checks shortest-path cost, and the reservation service checks half-open track and switch intervals.
+- Uses restricted forward chaining over explicit movement predicates. GREEN requires complete platform, compatibility, and route facts; blocked resources or occupied track derive RED; missing mandatory facts remain YELLOW.
 
 ### Persistence
 
@@ -65,16 +68,16 @@ SQLAlchemy persistence layer
 
 The schema contains:
 
-- trains with identifiers, priority, integer arrival and departure minutes, minimum dwell time, physical length, platform type requirements, and explicit platform compatibility;
+- trains with identifiers, priority, integer arrival and departure minutes, minimum dwell time, physical length, platform type requirements, explicit platform compatibility, and modeled entry/exit nodes;
 - platforms with type, length, and post-occupancy clearance minutes;
 - track nodes and directed track edges with traversal time, capacity, and resource groups;
-- scheduling plans and train-to-platform assignments;
+- scheduling plans, train-to-platform assignments, route movements, and time-based track/switch reservations;
 - isolated simulation sessions;
 - incidents and append-only operational events.
 
-Phase 3 adds train service status and delay minutes, platform availability and an unavailable reason, and a scenario key on each simulation session. Phase 4 adds plan version, engine, solver outcome, objective, maximum delay, validation state and explanation plus assignment delay and reassignment state. These fields remain portable across SQLite and PostgreSQL through Alembic revision `20261020_0003`.
+Phase 3 adds train service status and delay minutes, platform availability and an unavailable reason, and a scenario key on each simulation session. Phase 4 adds plan version, engine, solver outcome, objective, maximum delay, validation state and explanation plus assignment delay and reassignment state. Phase 5 adds entry/exit points, node layout coordinates, route validation state, movements, and reservations through Alembic revision `20261020_0004`. These fields remain portable across SQLite and PostgreSQL.
 
-Ready scheduling plans are not silently left valid after train or platform changes. Ready plans return to draft, applied plans become invalid, and the mutation response includes `schedule_validation_required: true`. The Phase 4 validator must pass again before a changed plan can be applied.
+Ready scheduling plans are not silently left valid after train or platform changes. Ready plans return to draft, applied plans become invalid, route validation is cleared, and the mutation response includes `schedule_validation_required: true`. Combined platform and route validation must pass again before a changed plan can be applied.
 
 All scheduling values use integer minutes. Occupancy and horizon intervals are half-open: `[start, end)`. The start is occupied and the end is excluded, so adjacent intervals can meet at the same minute without overlapping. Database constraints and reusable Pydantic validators enforce non-empty intervals and core record validity.
 
@@ -82,7 +85,7 @@ Platform scheduling treats train arrival plus recorded delay as the earliest usa
 
 Schedule lifecycle is `draft -> ready -> applied`, with `invalid` used when validation fails or applied inputs change and `archived` used for superseded applied plans. Every generated plan receives a monotonically increasing session-local version. Apply rejects non-latest versions, mismatched versions, and plans without current independent validation.
 
-Phase 4 validates platform allocations only. Responses and the Dispatch Board identify route reservations as provisional because route graph allocation is outside this phase.
+Phase 5 validation rebuilds all route movements for the selected plan in assignment-time order. Each train is routed from its entry point to its assigned platform before occupancy and from the platform to its exit after occupancy. Track resource groups and switch nodes are exclusive over half-open intervals. Closures remove resources from A* search, and reservation conflicts trigger alternative-path search before producing an unreachable/conflict finding.
 
 ## Repository shape
 
@@ -105,7 +108,7 @@ Runtime configuration comes from environment variables. Local secret-bearing `.e
 ## Frontend data flow
 
 ```text
-Overview, Trains & Platforms, and Dispatch Board clients
+Overview, Trains & Platforms, Dispatch Board, and Network Monitor clients
   |
   | browser-local workspace UUID
   v
@@ -118,7 +121,9 @@ FastAPI route -> session resolver -> service layer -> SQLAlchemy
 
 The session resolver looks up the public workspace UUID or creates an isolated normal-traffic workspace on first use. All train, platform, scenario, and Overview queries include the resulting internal session ID. The frontend contains no hardcoded operational records.
 
-## Phase 4 API surface
+The browser validates and retains its generated UUID in local storage, so navigation and refresh reuse the same workspace. Malformed stored identifiers are replaced locally; the backend independently validates every header. Archived or expired sessions are rejected, while sessions with no expiry remain persistent. Database exceptions trigger request-session rollback, emit server-side exception logs with the request method and path, and return a structured `503 DATABASE_ERROR` without exposing internal details.
+
+## Phase 5 API surface
 
 ```text
 GET/POST       /api/trains
@@ -132,11 +137,12 @@ POST           /api/schedules/generate
 POST           /api/schedules/validate
 POST           /api/schedules/apply
 GET            /api/schedules/current
+GET            /api/network/monitor
 ```
 
 Scenario restore deletes and recreates only records owned by the active simulation session. The five deterministic scenario definitions are normal traffic, congested station, multiple delayed trains, platform closure, and track closure.
 
-Generate reads current session resources and persists actual solver assignments. Validate independently reloads current resources and checks the persisted plan. Apply changes lifecycle state only after validation and stale-version checks; it does not claim route validity.
+Generate reads current session resources and persists actual solver assignments. Validate independently reloads current resources, checks platform constraints, calculates A* routes, and persists conflict-free reservations plus inference decisions. Apply changes lifecycle state only after both validation layers and stale-version checks pass.
 
 ## Quality boundaries
 

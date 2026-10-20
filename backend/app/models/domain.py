@@ -87,6 +87,8 @@ class Train(TimestampMixin, Base):
         nullable=False,
     )
     delay_minutes: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    origin_node_code: Mapped[str | None] = mapped_column(String(40))
+    destination_node_code: Mapped[str | None] = mapped_column(String(40))
 
     session: Mapped[SimulationSession] = relationship(back_populates="trains")
     compatible_platforms: Mapped[list[TrainPlatformCompatibility]] = relationship(back_populates="train", cascade="all, delete-orphan")
@@ -136,6 +138,8 @@ class TrackNode(TimestampMixin, Base):
     code: Mapped[str] = mapped_column(String(40), nullable=False)
     name: Mapped[str] = mapped_column(String(120), nullable=False)
     node_type: Mapped[str] = mapped_column(String(40), nullable=False)
+    x: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    y: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
 
     session: Mapped[SimulationSession] = relationship(back_populates="track_nodes")
     outgoing_edges: Mapped[list[TrackEdge]] = relationship(foreign_keys="TrackEdge.from_node_id", back_populates="from_node")
@@ -185,6 +189,7 @@ class SchedulingPlan(TimestampMixin, Base):
     objective_value: Mapped[int | None] = mapped_column(Integer)
     maximum_delay_minutes: Mapped[int] = mapped_column(Integer, nullable=False, default=30)
     is_validated: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    route_validated: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     explanation: Mapped[str] = mapped_column(Text, nullable=False, default="")
 
     session: Mapped[SimulationSession] = relationship(back_populates="plans")
@@ -212,6 +217,43 @@ class TrainAssignment(TimestampMixin, Base):
     plan: Mapped[SchedulingPlan] = relationship(back_populates="assignments")
     train: Mapped[Train] = relationship(back_populates="assignments")
     platform: Mapped[Platform] = relationship(back_populates="assignments")
+    route: Mapped[RouteMovement | None] = relationship(back_populates="assignment", cascade="all, delete-orphan", uselist=False)
+
+
+class RouteMovement(TimestampMixin, Base):
+    __tablename__ = "route_movements"
+    __table_args__ = (UniqueConstraint("assignment_id", name="uq_route_movement_assignment"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    assignment_id: Mapped[int] = mapped_column(ForeignKey("train_assignments.id", ondelete="CASCADE"), nullable=False, index=True)
+    origin_node_code: Mapped[str | None] = mapped_column(String(40))
+    destination_node_code: Mapped[str | None] = mapped_column(String(40))
+    path_json: Mapped[str] = mapped_column(Text, nullable=False, default="[]")
+    indicator: Mapped[str] = mapped_column(String(10), nullable=False, default="YELLOW")
+    decision: Mapped[str] = mapped_column(String(40), nullable=False, default="MovementBlocked")
+    explanation: Mapped[str] = mapped_column(Text, nullable=False, default="")
+
+    assignment: Mapped[TrainAssignment] = relationship(back_populates="route")
+    reservations: Mapped[list[RouteReservation]] = relationship(back_populates="movement", cascade="all, delete-orphan")
+
+
+class RouteReservation(TimestampMixin, Base):
+    __tablename__ = "route_reservations"
+    __table_args__ = (
+        CheckConstraint("end_minute > start_minute", name="ck_route_reservation_interval"),
+        Index("ix_route_resource_interval", "resource_code", "start_minute", "end_minute"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    movement_id: Mapped[int] = mapped_column(ForeignKey("route_movements.id", ondelete="CASCADE"), nullable=False, index=True)
+    resource_code: Mapped[str] = mapped_column(String(80), nullable=False)
+    resource_type: Mapped[str] = mapped_column(String(20), nullable=False)
+    edge_code: Mapped[str | None] = mapped_column(String(40))
+    start_minute: Mapped[int] = mapped_column(Integer, nullable=False)
+    end_minute: Mapped[int] = mapped_column(Integer, nullable=False)
+    sequence: Mapped[int] = mapped_column(Integer, nullable=False)
+
+    movement: Mapped[RouteMovement] = relationship(back_populates="reservations")
 
 
 class Incident(TimestampMixin, Base):

@@ -8,13 +8,14 @@ import { ApiError, type Platform, type Train, type TrainInput, type TrainStatus 
 type FormState = {
   identifier: string; priority: string; arrival: string; departure: string; dwell: string; length: string;
   platformType: string; compatible: string[]; status: TrainStatus; delay: string;
+  origin: string; destination: string;
 };
 
 function minuteToTime(value: number) { return `${String(Math.floor(value / 60)).padStart(2, "0")}:${String(value % 60).padStart(2, "0")}`; }
 function timeToMinute(value: string) { const [hours, minutes] = value.split(":").map(Number); return hours * 60 + minutes; }
 
 function initialState(train?: Train): FormState {
-  return train ? { identifier: train.identifier, priority: String(train.priority), arrival: minuteToTime(train.arrival_minute), departure: minuteToTime(train.departure_minute), dwell: String(train.minimum_dwell_minutes), length: String(train.length_meters), platformType: train.required_platform_type ?? "", compatible: train.compatible_platform_codes, status: train.service_status, delay: String(train.delay_minutes) } : { identifier: "", priority: "3", arrival: "08:00", departure: "08:15", dwell: "10", length: "220", platformType: "passenger", compatible: [], status: "scheduled", delay: "0" };
+  return train ? { identifier: train.identifier, priority: String(train.priority), arrival: minuteToTime(train.arrival_minute), departure: minuteToTime(train.departure_minute), dwell: String(train.minimum_dwell_minutes), length: String(train.length_meters), platformType: train.required_platform_type ?? "", compatible: train.compatible_platform_codes, status: train.service_status, delay: String(train.delay_minutes), origin: train.origin_node_code ?? "ENTRY-W", destination: train.destination_node_code ?? "EXIT-E" } : { identifier: "", priority: "3", arrival: "08:00", departure: "08:15", dwell: "10", length: "220", platformType: "passenger", compatible: [], status: "scheduled", delay: "0", origin: "ENTRY-W", destination: "EXIT-E" };
 }
 
 const inputClass = "mt-1.5 h-9 w-full rounded-md border border-slate-700 bg-slate-950/60 px-3 text-sm text-slate-200 outline-none transition focus:border-cyan-400/60 focus:ring-2 focus:ring-cyan-400/15";
@@ -36,7 +37,7 @@ export function TrainForm({ train, platforms, onSubmit, onCancel }: { train?: Tr
     if (Object.keys(nextErrors).length) { setErrors(nextErrors); return; }
     setBusy(true); setErrors({});
     try {
-      await onSubmit({ identifier: form.identifier.trim(), priority: Number(form.priority), arrival_minute: arrival, departure_minute: departure, minimum_dwell_minutes: dwell, length_meters: Number(form.length), required_platform_type: form.platformType.trim() || null, compatible_platform_codes: form.compatible, service_status: form.status, delay_minutes: form.status === "delayed" ? Number(form.delay) : 0 });
+      await onSubmit({ identifier: form.identifier.trim(), priority: Number(form.priority), arrival_minute: arrival, departure_minute: departure, minimum_dwell_minutes: dwell, length_meters: Number(form.length), required_platform_type: form.platformType.trim() || null, compatible_platform_codes: form.compatible, service_status: form.status, delay_minutes: form.status === "delayed" ? Number(form.delay) : 0, origin_node_code: form.origin, destination_node_code: form.destination });
     } catch (error) {
       if (error instanceof ApiError) {
         const fieldErrors = Object.fromEntries(error.details.map((detail) => [detail.field ?? "form", detail.message.replace(/^Value error, /, "")]));
@@ -56,6 +57,8 @@ export function TrainForm({ train, platforms, onSubmit, onCancel }: { train?: Tr
       <Field label="Train length (meters)" error={errors.length_meters}><input type="number" min="1" className={inputClass} value={form.length} onChange={(e) => set("length", e.target.value)} /></Field>
       <Field label="Priority" error={errors.priority}><select className={inputClass} value={form.priority} onChange={(e) => set("priority", e.target.value)}>{[1,2,3,4,5].map((value) => <option key={value} value={value}>{value} — {value === 1 ? "Highest" : value === 5 ? "Lowest" : "Standard"}</option>)}</select></Field>
       <Field label="Required platform type" error={errors.required_platform_type}><input className={inputClass} value={form.platformType} onChange={(e) => set("platformType", e.target.value)} /></Field>
+      <Field label="Entry point" error={errors.origin_node_code}><select className={inputClass} value={form.origin} onChange={(e) => set("origin", e.target.value)}><option value="ENTRY-W">West Entry</option><option value="ENTRY-E">East Entry</option></select></Field>
+      <Field label="Exit point" error={errors.destination_node_code}><select className={inputClass} value={form.destination} onChange={(e) => set("destination", e.target.value)}><option value="EXIT-E">East Exit</option><option value="EXIT-W">West Exit</option></select></Field>
       {form.status === "delayed" ? <Field label="Delay (minutes)" error={errors.delay_minutes}><input type="number" min="1" className={inputClass} value={form.delay} onChange={(e) => set("delay", e.target.value)} /></Field> : null}
     </div>
     <fieldset><legend className="text-xs font-medium text-slate-400">Compatible platforms</legend><div className="mt-2 grid gap-2 sm:grid-cols-3">{platforms.map((platform) => <label key={platform.id} className="flex items-center gap-2 rounded-md border border-slate-800 bg-slate-950/35 px-3 py-2 text-xs text-slate-300"><input type="checkbox" className="accent-cyan-400" checked={form.compatible.includes(platform.code)} onChange={(e) => set("compatible", e.target.checked ? [...form.compatible, platform.code] : form.compatible.filter((code) => code !== platform.code))} />{platform.code}<span className="ml-auto text-slate-600">{platform.length_meters} m</span></label>)}</div>{errors.compatible_platform_codes ? <p className="mt-1.5 text-xs text-rose-300">{errors.compatible_platform_codes}</p> : null}</fieldset>

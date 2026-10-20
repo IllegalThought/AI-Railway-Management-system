@@ -7,6 +7,8 @@ from app.models import (
     Incident,
     OperationalEvent,
     Platform,
+    RouteMovement,
+    RouteReservation,
     SchedulingPlan,
     SimulationSession,
     TrackEdge,
@@ -91,6 +93,25 @@ def restore_scenario(
     scenario = get_scenario(scenario_key)
     session_id = simulation_session.id
 
+    database.execute(
+        delete(RouteReservation).where(
+            RouteReservation.movement_id.in_(
+                database.query(RouteMovement.id)
+                .join(TrainAssignment)
+                .join(SchedulingPlan)
+                .filter(SchedulingPlan.session_id == session_id)
+            )
+        )
+    )
+    database.execute(
+        delete(RouteMovement).where(
+            RouteMovement.assignment_id.in_(
+                database.query(TrainAssignment.id)
+                .join(SchedulingPlan)
+                .filter(SchedulingPlan.session_id == session_id)
+            )
+        )
+    )
     database.execute(
         delete(TrainAssignment).where(
             TrainAssignment.plan_id.in_(
@@ -184,6 +205,8 @@ def _build_trains(
             required_platform_type="passenger",
             service_status=TrainStatus.DELAYED if delayed else TrainStatus.SCHEDULED,
             delay_minutes=delay_minutes,
+            origin_node_code="ENTRY-W",
+            destination_node_code="EXIT-E",
         )
         compatible = [platform for platform in platforms if platform.length_meters >= train.length_meters]
         train.compatible_platforms = [
@@ -194,28 +217,57 @@ def _build_trains(
 
 
 def _add_network(database: Session, simulation_session: SimulationSession) -> None:
-    west = TrackNode(
-        session=simulation_session,
-        code="N-WEST",
-        name="West Approach",
-        node_type="junction",
+    definitions = (
+        ("ENTRY-W", "West Entry", "entry", 40, 210),
+        ("J-W", "West Junction", "junction", 180, 210),
+        ("SW-W", "West Switch", "switch", 300, 210),
+        ("P1", "Platform 1", "platform", 470, 70),
+        ("P2", "Platform 2", "platform", 470, 140),
+        ("P3", "Platform 3", "platform", 470, 210),
+        ("P4", "Platform 4", "platform", 470, 280),
+        ("P5", "Platform 5", "platform", 470, 350),
+        ("SW-E", "East Switch", "switch", 650, 210),
+        ("J-E", "East Junction", "junction", 770, 210),
+        ("EXIT-E", "East Exit", "exit", 910, 210),
+        ("ENTRY-E", "East Entry", "entry", 910, 300),
+        ("EXIT-W", "West Exit", "exit", 40, 300),
+        ("BYPASS-N", "North Bypass", "junction", 470, 15),
     )
-    station = TrackNode(
-        session=simulation_session,
-        code="N-CENTRAL",
-        name="Central Station",
-        node_type="station",
-    )
-    database.add(
-        TrackEdge(
-            session=simulation_session,
-            code="T-WEST-01",
-            from_node=west,
-            to_node=station,
-            traversal_minutes=5,
-            capacity=1,
-            resource_group="west-approach",
+    nodes = {
+        code: TrackNode(session=simulation_session, code=code, name=name, node_type=node_type, x=x, y=y)
+        for code, name, node_type, x, y in definitions
+    }
+    database.add_all(nodes.values())
+    edges: list[tuple[str, str, str, int, str]] = [
+        ("T-WEST-01", "ENTRY-W", "J-W", 2, "WEST-THROAT"),
+        ("T-WEST-02", "J-W", "SW-W", 2, "WEST-THROAT"),
+        ("T-EAST-IN-01", "ENTRY-E", "J-E", 2, "EAST-THROAT"),
+        ("T-EAST-IN-02", "J-E", "SW-E", 2, "EAST-THROAT"),
+        ("T-EAST-OUT-01", "SW-E", "J-E", 2, "EAST-THROAT"),
+        ("T-EAST-OUT-02", "J-E", "EXIT-E", 2, "EAST-THROAT"),
+        ("T-WEST-OUT-01", "SW-W", "J-W", 2, "WEST-THROAT"),
+        ("T-WEST-OUT-02", "J-W", "EXIT-W", 2, "WEST-THROAT"),
+        ("T-W-BYPASS", "J-W", "BYPASS-N", 4, "NORTH-BYPASS"),
+        ("T-BYPASS-E", "BYPASS-N", "SW-E", 4, "NORTH-BYPASS"),
+        ("T-E-BYPASS", "J-E", "BYPASS-N", 4, "NORTH-BYPASS"),
+        ("T-BYPASS-W", "BYPASS-N", "SW-W", 4, "NORTH-BYPASS"),
+    ]
+    for platform_number in range(1, 6):
+        platform_code = f"P{platform_number}"
+        minutes = 2
+        edges.extend(
+            [
+                (f"T-W-{platform_code}", "SW-W", platform_code, minutes, f"BERTH-{platform_code}"),
+                (f"T-{platform_code}-E", platform_code, "SW-E", minutes, f"BERTH-{platform_code}"),
+                (f"T-E-{platform_code}", "SW-E", platform_code, minutes, f"BERTH-{platform_code}"),
+                (f"T-{platform_code}-W", platform_code, "SW-W", minutes, f"BERTH-{platform_code}"),
+            ]
         )
+    database.add_all(
+        [
+            TrackEdge(session=simulation_session, code=code, from_node=nodes[start], to_node=nodes[end], traversal_minutes=minutes, capacity=1, resource_group=group)
+            for code, start, end, minutes, group in edges
+        ]
     )
 
 

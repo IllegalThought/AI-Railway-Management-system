@@ -1,5 +1,6 @@
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
+from sqlalchemy.exc import OperationalError
 
 from app.api.errors import register_error_handlers
 from app.schemas.railway import TrainCreate
@@ -17,6 +18,10 @@ def build_error_test_app() -> FastAPI:
     @app.get("/duplicate")
     def duplicate_route() -> None:
         raise DuplicateRecordError("The requested record already exists.")
+
+    @app.get("/database-failure")
+    def database_failure_route() -> None:
+        raise OperationalError("SELECT broken", {}, Exception("database unavailable"))
 
     return app
 
@@ -54,3 +59,13 @@ def test_application_error_uses_typed_error_shape() -> None:
             "details": [],
         }
     }
+
+
+def test_database_error_is_distinct_and_logs_the_underlying_failure(caplog) -> None:
+    with TestClient(build_error_test_app(), raise_server_exceptions=False) as client:
+        response = client.get("/database-failure")
+
+    assert response.status_code == 503
+    assert response.json()["error"]["code"] == "DATABASE_ERROR"
+    assert "Database request failed: GET /database-failure" in caplog.text
+    assert "SELECT broken" in caplog.text

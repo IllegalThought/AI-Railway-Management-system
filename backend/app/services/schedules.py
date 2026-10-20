@@ -18,6 +18,7 @@ from app.models import OperationalEvent, Platform, SchedulingPlan, SimulationSes
 from app.models.enums import EventType, PlanStatus, TrainStatus
 from app.schemas.schedules import GenerateScheduleRequest, SchedulingEngine
 from app.services.exceptions import InvalidOperationError, RecordNotFoundError
+from app.services.network import validate_route_reservations
 
 
 def load_resources(database: Session, session_id: int) -> tuple[list[Train], list[Platform]]:
@@ -53,7 +54,7 @@ def generate_schedule(database: Session, simulation_session: SimulationSession, 
     else:
         result = solve_cp_sat(train_problems, platform_problems, domains, preferred, time_limit_seconds=request.time_limit_seconds)
     version = (database.scalar(select(func.max(SchedulingPlan.version)).where(SchedulingPlan.session_id == simulation_session.id)) or 0) + 1
-    plan = SchedulingPlan(session_id=simulation_session.id, name=f"Dispatch plan v{version}", version=version, status=PlanStatus.DRAFT, engine=request.engine.value, solver_status=result.status.value, objective_value=result.objective, maximum_delay_minutes=request.maximum_delay_minutes, is_validated=False, explanation=result.explanation, horizon_start_minute=start, horizon_end_minute=end)
+    plan = SchedulingPlan(session_id=simulation_session.id, name=f"Dispatch plan v{version}", version=version, status=PlanStatus.DRAFT, engine=request.engine.value, solver_status=result.status.value, objective_value=result.objective, maximum_delay_minutes=request.maximum_delay_minutes, is_validated=False, route_validated=False, explanation=result.explanation, horizon_start_minute=start, horizon_end_minute=end)
     database.add(plan)
     database.flush()
     for train in trains:
@@ -94,6 +95,9 @@ def validate_plan(database: Session, simulation_session: SimulationSession, plan
     valid_solver = plan.solver_status in {SolverStatus.FEASIBLE.value, SolverStatus.OPTIMAL.value}
     if not valid_solver:
         issues.insert(0, ValidationIssue("SOLVER_RESULT", f"The solver result is {plan.solver_status}; there is no complete plan to validate."))
+    route_issues = validate_route_reservations(database, plan, platform_constraints_passed=not issues) if valid_solver else []
+    issues.extend(route_issues)
+    plan.route_validated = not route_issues and valid_solver and len(plan.assignments) == len(trains)
     plan.is_validated = not issues
     plan.status = PlanStatus.READY if not issues else PlanStatus.INVALID
     database.commit()
@@ -106,8 +110,8 @@ def apply_plan(database: Session, simulation_session: SimulationSession, plan_id
         raise InvalidOperationError("The supplied schedule version does not match the persisted plan.")
     if is_stale(database, plan):
         raise InvalidOperationError("A newer schedule version exists. Validate and apply the latest plan instead.")
-    if plan.status != PlanStatus.READY or not plan.is_validated:
-        raise InvalidOperationError("Only an independently validated schedule can be applied.")
+    if plan.status != PlanStatus.READY or not plan.is_validated or not plan.route_validated:
+        raise InvalidOperationError("Only a schedule with validated platform constraints and route reservations can be applied.")
     prior = list(database.scalars(select(SchedulingPlan).where(SchedulingPlan.session_id == simulation_session.id, SchedulingPlan.status == PlanStatus.APPLIED)).all())
     for item in prior:
         item.status = PlanStatus.ARCHIVED

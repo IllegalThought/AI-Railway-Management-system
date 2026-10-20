@@ -1,4 +1,13 @@
+from datetime import timedelta
 from uuid import uuid4
+
+import pytest
+from sqlalchemy import func, select
+from sqlalchemy.orm import sessionmaker
+
+from app.database.base import utc_now
+from app.models import SimulationSession
+from app.models.enums import SessionStatus
 
 
 def session_headers() -> dict[str, str]:
@@ -140,3 +149,39 @@ def test_missing_or_invalid_session_header_is_rejected(client) -> None:
     assert missing.status_code == 400
     assert invalid.status_code == 400
     assert missing.json()["error"]["code"] == "INVALID_SESSION"
+    assert invalid.json()["error"]["code"] == "INVALID_SESSION"
+
+
+def test_valid_session_is_initialized_once_and_persists(client, database_engine) -> None:
+    session_id = str(uuid4())
+    headers = {"X-RailOps-Session": session_id}
+
+    first = client.get("/api/overview", headers=headers)
+    second = client.get("/api/overview", headers=headers)
+
+    assert first.status_code == second.status_code == 200
+    assert first.json()["train_count"] == second.json()["train_count"] == 20
+    session_factory = sessionmaker(bind=database_engine, expire_on_commit=False)
+    with session_factory() as database:
+        assert database.scalar(select(func.count()).select_from(SimulationSession).where(SimulationSession.public_id == session_id)) == 1
+
+
+@pytest.mark.parametrize(
+    ("status", "expires_delta", "message"),
+    [
+        (SessionStatus.ARCHIVED, None, "archived"),
+        (SessionStatus.ACTIVE, timedelta(minutes=-1), "expired"),
+    ],
+)
+def test_inactive_or_expired_session_is_rejected(client, database_engine, status, expires_delta, message) -> None:
+    session_id = str(uuid4())
+    session_factory = sessionmaker(bind=database_engine, expire_on_commit=False)
+    with session_factory() as database:
+        database.add(SimulationSession(public_id=session_id, name="Inactive workspace", status=status, expires_at=utc_now() + expires_delta if expires_delta else None))
+        database.commit()
+
+    response = client.get("/api/overview", headers={"X-RailOps-Session": session_id})
+
+    assert response.status_code == 400
+    assert response.json()["error"]["code"] == "INVALID_SESSION"
+    assert message in response.json()["error"]["message"].lower()

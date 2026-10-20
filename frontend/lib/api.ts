@@ -21,6 +21,8 @@ export type Train = {
   compatible_platform_codes: string[];
   service_status: TrainStatus;
   delay_minutes: number;
+  origin_node_code?: string | null;
+  destination_node_code?: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -80,6 +82,12 @@ export type SchedulePlan = {
 };
 export type ScheduleValidation = { plan: SchedulePlan; valid: boolean; issues: Array<{ code: string; message: string; train_id: number | null; platform_id: number | null }>; message: string };
 
+export type NetworkNode = { code: string; name: string; node_type: string; x: number; y: number; blocked: boolean };
+export type NetworkEdge = { code: string; from_node: string; to_node: string; traversal_minutes: number; capacity: number; resource_group: string | null; blocked: boolean };
+export type RouteReservation = { resource_code: string; resource_type: string; edge_code: string | null; start_minute: number; end_minute: number; sequence: number };
+export type NetworkMovement = { train_id: number; train_identifier: string; platform_code: string; origin_node_code: string | null; destination_node_code: string | null; path: string[]; indicator: "RED" | "YELLOW" | "GREEN"; decision: "MovementAllowed" | "MovementBlocked"; explanation: string; reservations: RouteReservation[] };
+export type NetworkMonitor = { plan_id: number | null; plan_version: number | null; route_validation_complete: boolean; nodes: NetworkNode[]; edges: NetworkEdge[]; movements: NetworkMovement[]; blocked_resources: string[]; message: string };
+
 export type ValidationDetail = { field: string | null; message: string; type?: string };
 
 export class ApiError extends Error {
@@ -89,18 +97,26 @@ export class ApiError extends Error {
   }
 }
 
+const workspaceStorageKey = "railops-session-id";
+const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+let transientWorkspaceSessionId = "";
+
 export function getApiBaseUrl() {
   return (process.env.NEXT_PUBLIC_API_BASE_URL ?? "").trim().replace(/\/$/, "");
 }
 
 export function getWorkspaceSessionId() {
   if (typeof window === "undefined") return "";
-  const storageKey = "railops-session-id";
-  const existing = window.localStorage.getItem(storageKey);
-  if (existing) return existing;
-  const sessionId = window.crypto.randomUUID();
-  window.localStorage.setItem(storageKey, sessionId);
-  return sessionId;
+  try {
+    const existing = window.localStorage.getItem(workspaceStorageKey);
+    if (existing && uuidPattern.test(existing)) return existing;
+    const sessionId = window.crypto.randomUUID();
+    window.localStorage.setItem(workspaceStorageKey, sessionId);
+    return sessionId;
+  } catch {
+    if (!transientWorkspaceSessionId) transientWorkspaceSessionId = window.crypto.randomUUID();
+    return transientWorkspaceSessionId;
+  }
 }
 
 async function apiRequest<T>(path: string, init: RequestInit = {}, scoped = true): Promise<T> {
@@ -146,3 +162,4 @@ export function getCurrentSchedule(signal?: AbortSignal) { return apiRequest<Sch
 export function generateSchedule(engine: SchedulingEngine) { return apiRequest<SchedulePlan>("/api/schedules/generate", { method: "POST", body: JSON.stringify({ engine, maximum_delay_minutes: 30 }) }); }
 export function validateSchedule(plan: Pick<SchedulePlan, "id" | "version">) { return apiRequest<ScheduleValidation>("/api/schedules/validate", { method: "POST", body: JSON.stringify({ plan_id: plan.id, version: plan.version }) }); }
 export function applySchedule(plan: Pick<SchedulePlan, "id" | "version">) { return apiRequest<{ plan: SchedulePlan; message: string }>("/api/schedules/apply", { method: "POST", body: JSON.stringify({ plan_id: plan.id, version: plan.version }) }); }
+export function getNetworkMonitor(signal?: AbortSignal) { return apiRequest<NetworkMonitor>("/api/network/monitor", { signal }); }

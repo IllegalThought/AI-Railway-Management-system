@@ -100,6 +100,8 @@ def update_train(database: Session, *, simulation_session: SimulationSession, tr
         "compatible_platform_codes": current_codes,
         "service_status": train.service_status,
         "delay_minutes": train.delay_minutes,
+        "origin_node_code": train.origin_node_code,
+        "destination_node_code": train.destination_node_code,
     }
     values.update(data.model_dump(exclude_unset=True))
     validated = TrainCreate.model_validate(values)
@@ -142,6 +144,7 @@ def _invalidate_ready_plans_for_train(database: Session, session_id: int, train_
     for plan in plans:
         plan.status = PlanStatus.INVALID if plan.status == PlanStatus.APPLIED else PlanStatus.DRAFT
         plan.is_validated = False
+        plan.route_validated = False
     return bool(plans)
 
 
@@ -150,6 +153,7 @@ def _invalidate_ready_plans_for_platform(database: Session, session_id: int, pla
     for plan in plans:
         plan.status = PlanStatus.INVALID if plan.status == PlanStatus.APPLIED else PlanStatus.DRAFT
         plan.is_validated = False
+        plan.route_validated = False
     return bool(plans)
 
 
@@ -158,6 +162,7 @@ def invalidate_active_plans(database: Session, session_id: int) -> bool:
     for plan in plans:
         plan.status = PlanStatus.INVALID if plan.status == PlanStatus.APPLIED else PlanStatus.DRAFT
         plan.is_validated = False
+        plan.route_validated = False
     if plans:
         database.commit()
     return bool(plans)

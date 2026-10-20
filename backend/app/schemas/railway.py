@@ -23,6 +23,8 @@ class TrainCreate(ApiModel):
     compatible_platform_codes: list[str] = Field(default_factory=list)
     service_status: TrainStatus = TrainStatus.SCHEDULED
     delay_minutes: int = Field(default=0, ge=0, le=1_440)
+    origin_node_code: str | None = Field(default=None, max_length=40)
+    destination_node_code: str | None = Field(default=None, max_length=40)
 
     @field_validator("identifier")
     @classmethod
@@ -34,7 +36,7 @@ class TrainCreate(ApiModel):
     def minutes_must_be_valid(cls, value: int, info) -> int:
         return validate_minute(value, info.field_name.replace("_", " ").capitalize())
 
-    @field_validator("required_platform_type")
+    @field_validator("required_platform_type", "origin_node_code", "destination_node_code")
     @classmethod
     def normalize_optional_type(cls, value: str | None) -> str | None:
         return validate_non_blank(value, "Required platform type") if value is not None else None
@@ -73,6 +75,8 @@ class TrainUpdate(ApiModel):
     compatible_platform_codes: list[str] | None = None
     service_status: TrainStatus | None = None
     delay_minutes: int | None = Field(default=None, ge=0, le=1_440)
+    origin_node_code: str | None = Field(default=None, max_length=40)
+    destination_node_code: str | None = Field(default=None, max_length=40)
 
     @field_validator("identifier")
     @classmethod
@@ -84,7 +88,7 @@ class TrainUpdate(ApiModel):
     def minutes_must_be_valid(cls, value: int | None, info) -> int | None:
         return validate_minute(value, info.field_name.replace("_", " ").capitalize()) if value is not None else None
 
-    @field_validator("required_platform_type")
+    @field_validator("required_platform_type", "origin_node_code", "destination_node_code")
     @classmethod
     def normalize_optional_type(cls, value: str | None) -> str | None:
         return validate_non_blank(value, "Required platform type") if value is not None else None
@@ -111,6 +115,8 @@ class TrainResponse(ApiModel):
     compatible_platform_codes: list[str]
     service_status: TrainStatus
     delay_minutes: int
+    origin_node_code: str | None
+    destination_node_code: str | None
     created_at: datetime
     updated_at: datetime
 

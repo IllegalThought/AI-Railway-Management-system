@@ -2,6 +2,7 @@ from fastapi import APIRouter
 
 from app.api.health import router as health_router
 from app.api.overview import router as overview_router
+from app.api.network import router as network_router
 from app.api.platforms import router as platforms_router
 from app.api.scenarios import router as scenarios_router
 from app.api.schedules import router as schedules_router
@@ -15,4 +16,5 @@ api_router.include_router(platforms_router)
 api_router.include_router(scenarios_router)
 api_router.include_router(overview_router)
 api_router.include_router(schedules_router)
+api_router.include_router(network_router)
 

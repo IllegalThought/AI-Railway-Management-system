@@ -1,4 +1,5 @@
 import uuid
+from datetime import timezone
 from typing import Annotated
 
 from fastapi import Depends, Header
@@ -6,8 +7,10 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from app.database.base import utc_now
 from app.database.session import get_db
 from app.models import SimulationSession
+from app.models.enums import SessionStatus
 from app.services.exceptions import InvalidSessionError
 from app.services.scenarios import restore_scenario
 
@@ -34,6 +37,13 @@ def get_active_session(
         select(SimulationSession).where(SimulationSession.public_id == session_id)
     )
     if simulation_session is not None:
+        expires_at = simulation_session.expires_at
+        if expires_at is not None and expires_at.tzinfo is None:
+            expires_at = expires_at.replace(tzinfo=timezone.utc)
+        if simulation_session.status != SessionStatus.ACTIVE:
+            raise InvalidSessionError("This demo workspace is archived and is no longer active.")
+        if expires_at is not None and expires_at <= utc_now():
+            raise InvalidSessionError("This demo workspace has expired.")
         return simulation_session
 
     simulation_session = SimulationSession(

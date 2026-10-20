@@ -49,12 +49,47 @@ describe("typed API client", () => {
       },
       crypto: { randomUUID: () => "00000000-0000-4000-8000-000000000099" },
     });
-    const fetchMock = vi.fn().mockResolvedValue(new Response("[]", { status: 200 }));
+    const fetchMock = vi.fn().mockImplementation(async () => new Response("[]", { status: 200 }));
     vi.stubGlobal("fetch", fetchMock);
 
     await getTrains();
     const request = fetchMock.mock.calls[0][1] as RequestInit;
     expect(new Headers(request.headers).get("X-RailOps-Session")).toBe("00000000-0000-4000-8000-000000000099");
+  });
+
+  it("retains the same workspace session across requests", async () => {
+    vi.stubEnv("NEXT_PUBLIC_API_BASE_URL", "https://api.example.test");
+    const storage = new Map<string, string>();
+    vi.stubGlobal("window", {
+      localStorage: { getItem: (key: string) => storage.get(key) ?? null, setItem: (key: string, value: string) => storage.set(key, value) },
+      crypto: { randomUUID: () => "00000000-0000-4000-8000-000000000088" },
+    });
+    const fetchMock = vi.fn().mockImplementation(async () => new Response("[]", { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await getTrains();
+    await getTrains();
+
+    expect(fetchMock.mock.calls.map((call) => new Headers((call[1] as RequestInit).headers).get("X-RailOps-Session"))).toEqual([
+      "00000000-0000-4000-8000-000000000088",
+      "00000000-0000-4000-8000-000000000088",
+    ]);
+  });
+
+  it("repairs a malformed stored workspace identifier", async () => {
+    vi.stubEnv("NEXT_PUBLIC_API_BASE_URL", "https://api.example.test");
+    const storage = new Map<string, string>([["railops-session-id", "invalid-session"]]);
+    vi.stubGlobal("window", {
+      localStorage: { getItem: (key: string) => storage.get(key) ?? null, setItem: (key: string, value: string) => storage.set(key, value) },
+      crypto: { randomUUID: () => "00000000-0000-4000-8000-000000000077" },
+    });
+    const fetchMock = vi.fn().mockResolvedValue(new Response("[]", { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await getTrains();
+
+    expect(storage.get("railops-session-id")).toBe("00000000-0000-4000-8000-000000000077");
+    expect(new Headers((fetchMock.mock.calls[0][1] as RequestInit).headers).get("X-RailOps-Session")).toBe("00000000-0000-4000-8000-000000000077");
   });
 
   it("exposes backend field validation details", async () => {
