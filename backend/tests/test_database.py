@@ -1,6 +1,12 @@
 from sqlalchemy import select, text
+from sqlalchemy.dialects import postgresql
+from sqlalchemy.schema import CreateTable
 
+from app import models  # noqa: F401 - register mapped tables for DDL compilation
+from app.database.base import Base
 from app.database import session as database_session
+from app.config import Settings
+from app.database.session import build_engine
 from app.models import Platform, Train
 from app.schemas.railway import PlatformCreate, TrainCreate
 from app.services.records import create_platform, create_simulation_session, create_train
@@ -88,4 +94,39 @@ def test_request_database_session_rolls_back_after_an_error(monkeypatch) -> None
 
     assert fake.rolled_back is True
     assert fake.closed is True
+
+
+def test_postgresql_engine_uses_bounded_recycled_pool_without_connecting() -> None:
+    settings = Settings(
+        DATABASE_URL="postgresql://railops:placeholder@database.example/railops?sslmode=require",
+        DATABASE_POOL_SIZE=4,
+        DATABASE_MAX_OVERFLOW=3,
+        DATABASE_POOL_TIMEOUT_SECONDS=9,
+        DATABASE_POOL_RECYCLE_SECONDS=240,
+    )
+    engine = build_engine(
+        settings.database_url,
+        pool_size=settings.database_pool_size,
+        max_overflow=settings.database_max_overflow,
+        pool_timeout=settings.database_pool_timeout_seconds,
+        pool_recycle=settings.database_pool_recycle_seconds,
+    )
+    try:
+        assert engine.dialect.name == "postgresql"
+        assert engine.pool.size() == 4
+        assert engine.pool._max_overflow == 3
+        assert engine.pool._timeout == 9
+        assert engine.pool._recycle == 240
+    finally:
+        engine.dispose()
+
+
+def test_complete_model_schema_compiles_for_postgresql() -> None:
+    dialect = postgresql.dialect()
+    statements = [
+        str(CreateTable(table).compile(dialect=dialect))
+        for table in Base.metadata.sorted_tables
+    ]
+    assert len(statements) == len(Base.metadata.tables)
+    assert all("CREATE TABLE" in statement for statement in statements)
 

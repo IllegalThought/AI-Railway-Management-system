@@ -2,7 +2,12 @@ import pytest
 from pydantic import ValidationError
 
 from app.config import Settings
+from app.schemas.analytics import BenchmarkRequest
 from app.schemas.railway import SchedulingInput, TrainCreate
+from app.schemas.schedules import GenerateScheduleRequest
+
+
+POSTGRESQL_URL = "postgresql://railops:placeholder@database.example/railops?sslmode=require"
 
 
 def test_train_requires_dwell_time_inside_occupancy_window() -> None:
@@ -67,9 +72,44 @@ def test_duplicate_train_assignment_is_rejected_case_insensitively() -> None:
 
 
 def test_production_rejects_unrestricted_cors() -> None:
-    settings = Settings(APP_ENV="production", BACKEND_CORS_ORIGINS="*")
+    settings = Settings(
+        APP_ENV="production",
+        DATABASE_URL=POSTGRESQL_URL,
+        BACKEND_CORS_ORIGINS="*",
+    )
     with pytest.raises(ValueError, match="Unrestricted CORS"):
         _ = settings.cors_origins
+
+
+def test_production_requires_postgresql_and_exact_https_cors() -> None:
+    with pytest.raises(ValidationError, match="Production requires a PostgreSQL"):
+        Settings(APP_ENV="production", DATABASE_URL="sqlite:///./production.db")
+
+    insecure = Settings(
+        APP_ENV="production",
+        DATABASE_URL=POSTGRESQL_URL,
+        BACKEND_CORS_ORIGINS="http://railops.example",
+    )
+    with pytest.raises(ValueError, match="must use HTTPS"):
+        _ = insecure.cors_origins
+
+    with_path = Settings(
+        APP_ENV="production",
+        DATABASE_URL=POSTGRESQL_URL,
+        BACKEND_CORS_ORIGINS="https://railops.example/app",
+    )
+    with pytest.raises(ValueError, match="exact HTTP"):
+        _ = with_path.cors_origins
+
+    valid = Settings(
+        APP_ENV="production",
+        DATABASE_URL=POSTGRESQL_URL,
+        BACKEND_CORS_ORIGINS="https://railops.example/, https://www.railops.example",
+    )
+    assert valid.cors_origins == [
+        "https://railops.example",
+        "https://www.railops.example",
+    ]
 
 
 def test_postgresql_url_uses_declared_psycopg_driver() -> None:
@@ -82,4 +122,12 @@ def test_relative_sqlite_url_is_anchored_to_backend_directory() -> None:
     settings = Settings(DATABASE_URL="sqlite:///./railops.db")
 
     assert settings.database_url.endswith("/backend/railops.db")
+
+
+@pytest.mark.parametrize("request_type", [GenerateScheduleRequest, BenchmarkRequest])
+def test_public_solver_requests_have_bounded_resources(request_type) -> None:
+    with pytest.raises(ValidationError):
+        request_type(search_limit=500_001)
+    with pytest.raises(ValidationError):
+        request_type(time_limit_seconds=15.1)
 

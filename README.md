@@ -81,6 +81,10 @@ Copy `.env.example` values into local or deployment environment configuration. N
 | `DATABASE_URL` | SQLite or PostgreSQL SQLAlchemy URL |
 | `BACKEND_CORS_ORIGINS` | Comma-separated allowed frontend origins |
 | `MAX_REQUEST_BODY_BYTES` | Request content-length ceiling; defaults to 1 MiB |
+| `DATABASE_POOL_SIZE` | Persistent PostgreSQL pool size; defaults to 5 |
+| `DATABASE_MAX_OVERFLOW` | Temporary PostgreSQL overflow connections; defaults to 5 |
+| `DATABASE_POOL_TIMEOUT_SECONDS` | Wait limit for a pooled connection |
+| `DATABASE_POOL_RECYCLE_SECONDS` | Connection recycle interval for managed PostgreSQL |
 | `NEXT_PUBLIC_API_BASE_URL` | Public browser-visible backend origin |
 
 ## Documentation

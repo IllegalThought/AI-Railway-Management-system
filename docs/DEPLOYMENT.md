@@ -1,64 +1,27 @@
-# Deployment Guide
+# Production Deployment Guide
 
-The intended deployment is a Next.js frontend on Vercel, a FastAPI backend on Render, and managed PostgreSQL. SQLite is for local development only.
+RailOps AI is prepared as one GitHub monorepo with these deployment boundaries:
 
-## Production prerequisites
+- `frontend/`: Next.js application deployed to Vercel
+- `backend/`: FastAPI service deployed to Render
+- Neon: managed PostgreSQL persistence
+- `render.yaml`: Render Blueprint configuration
+- `frontend/vercel.json`: Vercel build and response-header configuration
+- `.github/workflows/verify.yml`: secret-free pull-request and main-branch verification
 
-- A PostgreSQL database and private connection URL
-- A Render web service using the `backend` directory
-- A Vercel project using the `frontend` directory
-- Exact deployed frontend and backend HTTPS origins
-- Python and Node versions supported by the declared dependencies
+RailOps AI is a synthetic decision-support simulation. Deployment does not make it certified railway signaling, dispatch, or safety software.
 
-## Render backend
+## 1. Local release verification
 
-Use `backend` as the root directory.
-
-- Build command: `pip install -r requirements.txt`
-- Pre-deploy command: `alembic upgrade head`
-- Start command: `uvicorn app.main:app --host 0.0.0.0 --port $PORT`
-
-Configure:
-
-```text
-APP_ENV=production
-APP_NAME=RailOps AI API
-APP_VERSION=0.8.0
-DATABASE_URL=<managed PostgreSQL URL>
-BACKEND_CORS_ORIGINS=https://<your-vercel-domain>
-MAX_REQUEST_BODY_BYTES=1048576
-```
-
-PostgreSQL URLs beginning with `postgres://` or `postgresql://` are normalized to the psycopg 3 driver. Never use wildcard CORS in production; the application rejects it.
-
-Run `python -m app.database.verify_schema` after the migration and before routing traffic. The process must exit successfully and report the expected Alembic head with no drift.
-
-## Vercel frontend
-
-Use `frontend` as the root directory and the standard Next.js framework preset. Configure:
-
-```text
-NEXT_PUBLIC_API_BASE_URL=https://<your-render-service>
-```
-
-This value is intentionally browser-visible and must contain only the public API origin. Do not put credentials in any `NEXT_PUBLIC_*` variable.
-
-## Safe database updates
-
-1. Back up the production database using the provider snapshot facility.
-2. Review the new Alembic revision and its downgrade behavior.
-3. Apply `alembic upgrade head` to the configured production URL.
-4. Run `python -m app.database.verify_schema`.
-5. Check `/api/health`, then test an isolated workspace workflow.
-
-Do not use `alembic stamp head` to hide drift, edit an applied migration, or reset production data. Model changes require a new migration and an upgrade regression test.
-
-## Release verification
+From the repository root:
 
 ```bash
 cd backend
-python -m app.database.verify_schema
-pytest -q
+python3 -m venv .venv
+.venv/bin/pip install -r requirements.txt
+.venv/bin/alembic upgrade head
+.venv/bin/python -m app.database.verify_schema
+.venv/bin/pytest -q
 
 cd ../frontend
 npm ci
@@ -68,22 +31,268 @@ npm run lint
 npm run build
 ```
 
-Check Git tracking before deployment:
+Local development continues to use `sqlite:///./railops.db`. Production settings fail fast unless `DATABASE_URL` resolves to PostgreSQL.
+
+## 2. Push the monorepo to GitHub
+
+Review changes before committing:
 
 ```bash
+git status --short
+git diff --check
+git diff
 git ls-files | grep -E '(^|/)(\.env|.*\.(db|sqlite|sqlite3))($|\.)'
 ```
 
-Only `.env.example` should match. Local `.env*`, `.next`, `node_modules`, and database files are ignored.
+Only safe `.env.example` templates should match. Then push through a normal reviewable commit:
 
-## Security and operating notes
+```bash
+git add .
+git commit -m "chore: prepare Phase 9 production deployment"
+git push -u origin main
+```
 
-- The API limits declared request sizes, applies no-store and browser hardening headers, validates payload bounds, and constrains CSP nodes and CP-SAT time.
-- Scenario restore is destructive only inside the caller's isolated workspace; no global reset or administration endpoint is exposed.
-- The workspace UUID is not authentication. Add an identity provider, authorization, server-side session issuance, expiry, rate limiting, audit retention, and abuse protection before offering a multi-user production service.
-- Use managed PostgreSQL backups, TLS, log retention, dependency scanning, and platform resource ceilings.
-- Monitor health, 409 rates, 413 responses, database errors, solver duration, CPU, memory, and database connections.
+If the GitHub remote has not been configured:
 
-## Rollback
+```bash
+git remote add origin https://github.com/YOUR_ACCOUNT/YOUR_REPOSITORY.git
+git push -u origin main
+```
 
-Prefer application rollback while keeping forward-compatible schema additions. Use Alembic downgrade only after reviewing data-loss implications and restoring a verified backup if necessary. Never delete the live database to resolve a migration problem.
+Do not put Neon, Render, or Vercel credentials in Git, GitHub Actions variables, or any `NEXT_PUBLIC_*` value. The included GitHub workflow uses SQLite and placeholder public origins, so it requires no secrets.
+
+## 3. Create the Neon PostgreSQL database
+
+1. Sign in to Neon and create a project and production branch.
+2. Place the Neon region close to the Render service region to reduce database latency.
+3. In **Connection Details**, select Python/SQLAlchemy-compatible connection information.
+4. Copy a TLS-enabled PostgreSQL URL. Keep it only in Render's secret environment settings.
+5. Prefer the direct Neon endpoint for schema migrations. A pooled endpoint can be used for application traffic when needed; RailOps AI also maintains a small bounded SQLAlchemy pool.
+
+The value should have this general form:
+
+```text
+postgresql://USER:PASSWORD@ENDPOINT.neon.tech/DATABASE?sslmode=require
+```
+
+The backend converts `postgres://` and `postgresql://` to SQLAlchemy's `postgresql+psycopg://` form internally. Do not paste the URL into Vercel.
+
+Neon data survives Render restarts and redeployments because it is stored outside the Render filesystem. Do not use a Render-local SQLite file in production.
+
+## 4. Deploy the FastAPI backend to Render
+
+### Blueprint method
+
+1. In Render, choose **New > Blueprint**.
+2. Connect the GitHub repository and select the repository-root `render.yaml`.
+3. Enter secret values requested for `DATABASE_URL` and `BACKEND_CORS_ORIGINS`.
+4. Select a Render region near the Neon project.
+5. Review the service plan and create the service.
+
+The Blueprint configures:
+
+- root directory: `backend`
+- runtime: Python, pinned through `backend/.python-version`
+- build: `pip install -r requirements.txt`
+- start: `bash scripts/start-production.sh`
+- health check: `/api/health`
+- graceful shutdown window: 30 seconds
+
+The production startup script runs `alembic upgrade head`, verifies ORM/schema compatibility, and then binds Uvicorn to `0.0.0.0:$PORT`. Migrations are idempotent and never reset existing records. For a paid Render service, moving migrations to a Render pre-deploy command is also valid; keep the schema verification before application startup.
+
+### Manual web-service method
+
+Use these exact Render fields:
+
+| Setting | Value |
+| --- | --- |
+| Runtime | Python 3 |
+| Root Directory | `backend` |
+| Build Command | `pip install -r requirements.txt` |
+| Start Command | `bash scripts/start-production.sh` |
+| Health Check Path | `/api/health` |
+| Auto Deploy | After GitHub checks pass |
+
+### Required backend environment variables
+
+| Variable | Production value |
+| --- | --- |
+| `APP_ENV` | `production` |
+| `APP_NAME` | `RailOps AI API` |
+| `APP_VERSION` | `0.9.0` |
+| `DATABASE_URL` | Secret Neon PostgreSQL URL with TLS |
+| `BACKEND_CORS_ORIGINS` | Exact Vercel HTTPS origin(s), comma-separated |
+| `MAX_REQUEST_BODY_BYTES` | `1048576` |
+| `DATABASE_POOL_SIZE` | `5` |
+| `DATABASE_MAX_OVERFLOW` | `5` |
+| `DATABASE_POOL_TIMEOUT_SECONDS` | `10` |
+| `DATABASE_POOL_RECYCLE_SECONDS` | `300` |
+
+Render supplies `PORT`. Do not define it manually unless Render requires an override.
+
+Production startup rejects SQLite, wildcard CORS, non-HTTPS CORS origins, and origins containing paths, queries, or fragments.
+
+## 5. Migrations and optional demo seed
+
+The start script automatically applies committed migrations. To migrate manually from a Render shell or a trusted workstation:
+
+```bash
+cd backend
+DATABASE_URL='YOUR_NEON_URL' python -m alembic upgrade head
+DATABASE_URL='YOUR_NEON_URL' python -m app.database.verify_schema
+```
+
+Run migrations online against the target database. Offline `alembic upgrade --sql` generation is not supported because the legacy Phase 5 migration reads and transforms existing session topology rows.
+
+The normal web experience lazily creates isolated synthetic data for each new UUID workspace. A shared fixed demo workspace is optional and is not required by the frontend. To create it once:
+
+```bash
+cd backend
+APP_ENV=production \
+DATABASE_URL='YOUR_NEON_URL' \
+BACKEND_CORS_ORIGINS='https://YOUR_PROJECT.vercel.app' \
+python -m app.database.seed_demo
+```
+
+The seed command is idempotent. Repeating it reports that the data exists and changes no records. `app.database.init_db` is intentionally disabled in production so deployments cannot bypass Alembic migration history.
+
+Never run a scenario restore as a database initialization step. Scenario restore affects only the UUID workspace supplied in the request header, but it intentionally replaces that workspace's synthetic records.
+
+## 6. Deploy the Next.js frontend to Vercel
+
+1. In Vercel, choose **Add New Project** and import the same GitHub repository.
+2. Set **Root Directory** to `frontend`.
+3. Keep the detected framework as Next.js.
+4. Use Node.js `24.x`; `frontend/package.json` pins this supported major version.
+5. Add `NEXT_PUBLIC_API_BASE_URL` for Production and any intended Preview environments.
+6. Deploy after the Render service has a stable HTTPS URL.
+
+Production example:
+
+```text
+NEXT_PUBLIC_API_BASE_URL=https://railops-ai-api.onrender.com
+```
+
+The value must be an origin only: no `/api`, path, query, fragment, or trailing route. Public production origins must use HTTPS. Database URLs, Neon passwords, and backend-only settings must never use the `NEXT_PUBLIC_` prefix.
+
+Vercel reads `frontend/vercel.json`, runs `npm ci` and `npm run build`, and applies baseline browser response headers. Next.js App Router owns all application routes, so direct navigation and page refreshes do not require custom rewrite rules.
+
+## 7. Configure exact CORS origins
+
+After Vercel assigns the production URL, set Render's `BACKEND_CORS_ORIGINS` to the exact origin:
+
+```text
+https://railops-ai.vercel.app
+```
+
+For more than one real frontend origin:
+
+```text
+https://railops-ai.vercel.app,https://railops.example.com
+```
+
+Do not use `*`. Vercel preview deployments receive changing hostnames; either add a specific preview URL temporarily, use a stable custom preview domain, or test previews against a separate backend with a deliberately scoped origin list.
+
+After changing CORS, redeploy or restart Render and test a browser request from the actual Vercel origin.
+
+## 8. Deployment testing
+
+Replace the example hosts below with the created services.
+
+### Backend health and CORS
+
+```bash
+curl --fail --show-error https://YOUR_RENDER_HOST/api/health
+curl --fail --show-error \
+  -H 'Origin: https://YOUR_VERCEL_HOST' \
+  -H 'Access-Control-Request-Method: GET' \
+  -X OPTIONS \
+  https://YOUR_RENDER_HOST/api/overview
+```
+
+Confirm `access-control-allow-origin` contains the exact Vercel origin.
+
+### Isolated workspace check
+
+```bash
+SESSION_ONE='00000000-0000-4000-8000-000000000091'
+SESSION_TWO='00000000-0000-4000-8000-000000000092'
+
+curl --fail --show-error \
+  -H "X-RailOps-Session: ${SESSION_ONE}" \
+  https://YOUR_RENDER_HOST/api/overview
+
+curl --fail --show-error \
+  -H "X-RailOps-Session: ${SESSION_TWO}" \
+  https://YOUR_RENDER_HOST/api/overview
+```
+
+Mutate only a disposable test workspace and confirm the second workspace remains unchanged.
+
+### Browser workflow
+
+1. Load Overview and confirm API and database readiness.
+2. Open Trains & Platforms and read seeded records.
+3. Generate, validate, and apply a plan.
+4. Open Network Monitor and Live Operations.
+5. Create an incident, calculate a revision, and apply it.
+6. Open Performance Analytics and run the bounded algorithm comparison.
+7. Refresh every route directly and confirm it remains available.
+8. Redeploy Render and confirm the same browser workspace still contains its records.
+
+## 9. Troubleshooting
+
+### Render reports a missing `PORT`
+
+Use `bash scripts/start-production.sh` as the start command. Render supplies `PORT` only at runtime.
+
+### Render health check times out
+
+Confirm the process binds to `0.0.0.0`, migrations completed, Neon accepts the connection, and `/api/health` returns HTTP 200 in logs.
+
+### `Production requires a PostgreSQL DATABASE_URL`
+
+`APP_ENV=production` was combined with a missing or SQLite URL. Set the Neon URL in Render's secret environment settings.
+
+### Database connection or TLS failure
+
+Copy a fresh Neon connection string, retain `sslmode=require`, verify password encoding, and confirm Neon compute availability. Do not log or paste the secret into issue trackers.
+
+### `Pending Alembic migrations` or model/schema drift
+
+Run `python -m alembic upgrade head`, then `python -m app.database.verify_schema`. Do not use `alembic stamp head`, edit applied migrations, or reset the database.
+
+### Browser shows “Backend configuration error”
+
+Set `NEXT_PUBLIC_API_BASE_URL` to the Render HTTPS origin only, then trigger a new Vercel build. Next.js public values are embedded during the build.
+
+### Browser shows “Backend unreachable”
+
+Open the Render health URL directly, inspect Render logs, and check whether a free service is waking from suspension. This message does not imply the database is unavailable.
+
+### Browser request is blocked by CORS
+
+Compare the browser's exact `Origin` header with `BACKEND_CORS_ORIGINS`. Scheme, hostname, and port must match; paths do not belong in an origin.
+
+### Analytics or scheduling returns validation errors
+
+Public requests are intentionally bounded to 500,000 CSP nodes and 15 seconds of CP-SAT time. Use supported limits and inspect the structured error response.
+
+### Records disappear after a backend redeploy
+
+Confirm Render uses Neon PostgreSQL rather than SQLite and that the production `DATABASE_URL` did not change to another Neon branch.
+
+## 10. Security and operational limitations
+
+- UUID demo workspaces isolate data but are not authenticated accounts.
+- No global reset or unrestricted database administration endpoint is exposed.
+- Request bodies, record fields, scheduling search, and CP-SAT duration are bounded.
+- Render or an upstream edge should additionally enforce request rates and chunked-body limits.
+- Before unrestricted public use, add authentication, authorization, server-issued session expiry, rate limiting, abuse monitoring, and retention policies.
+- Use Neon backups or branches before high-risk migrations and monitor Render logs, latency, database connections, 409 conflicts, 413 responses, and solver duration.
+
+## 11. External permissions still required
+
+Repository preparation does not create external services. The repository owner must authenticate with GitHub, Neon, Render, and Vercel; create or select the projects; enter secrets; authorize Git access; and verify the resulting live URLs. Do not report deployment success until those live checks pass.
+
+Provider references: [Render Blueprints](https://render.com/docs/blueprint-spec), [Render monorepos](https://render.com/docs/monorepo-support), [Render health checks](https://render.com/docs/health-checks), [Vercel monorepos](https://vercel.com/docs/monorepos), [Vercel environment variables](https://vercel.com/docs/environment-variables), and [Neon compute and pooling](https://neon.com/docs/manage/endpoints/).

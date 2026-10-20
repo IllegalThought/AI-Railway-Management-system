@@ -18,8 +18,8 @@ class GenerateScheduleRequest(ApiModel):
     horizon_start_minute: int | None = Field(default=None, ge=0, le=10_080)
     horizon_end_minute: int | None = Field(default=None, ge=1, le=10_080)
     maximum_delay_minutes: int = Field(default=30, ge=0, le=240)
-    search_limit: int = Field(default=100_000, ge=1, le=5_000_000)
-    time_limit_seconds: float = Field(default=10, gt=0, le=60)
+    search_limit: int = Field(default=100_000, ge=1, le=500_000)
+    time_limit_seconds: float = Field(default=10, gt=0, le=15)
 
     @model_validator(mode="after")
     def validate_horizon(self) -> "GenerateScheduleRequest":

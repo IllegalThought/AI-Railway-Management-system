@@ -4,7 +4,7 @@ Last updated: 2026-10-20
 
 ## Current status
 
-Phases 1 through 8 are complete and validated. RailOps AI is a release candidate with an end-to-end tested operational workflow, verified AI algorithms, release security controls, refined responsive UI, schema compatibility gates, and complete project and deployment documentation.
+Phases 1 through 9 are complete at repository level. RailOps AI now includes production deployment manifests, strict production environment validation, managed-PostgreSQL pool controls, automated GitHub verification, and detailed Neon/Render/Vercel operating instructions. External services have not been created or claimed as live.
 
 ## Phase tracking
 
@@ -19,6 +19,7 @@ Phases 1 through 8 are complete and validated. RailOps AI is a release candidate
 | Phase 6 | Complete | Persisted backend simulation clock, validated live movement state, incident management, committed-movement-safe dynamic replanning, schedule comparison, Live Operations, and Incident Center | `backend/app/services/simulation.py`, `backend/app/services/incidents.py`, `backend/tests/test_phase6_simulation.py`, `frontend/components/live/`, `frontend/components/incidents/` |
 | Phase 7 | Complete | Actual operational metrics, persisted FCFS/CSP/CP-SAT benchmarks, decision explanations, incident-change rationales, Recharts analytics, and measured Overview KPIs | `backend/app/services/analytics.py`, `backend/app/api/analytics.py`, `backend/tests/test_phase7_analytics.py`, `frontend/components/analytics/`, `frontend/lib/analytics.test.ts` |
 | Phase 8 | Complete | Full workflow integration, algorithm verification, UI/accessibility refinement, public-demo security review, release documentation, and deployment validation | `backend/tests/test_phase8_release.py`, `backend/app/main.py`, `frontend/components/settings/`, `README.md`, `docs/` |
+| Phase 9 | Complete (deployment pending owner accounts) | GitHub CI, Render/Vercel manifests, Neon/PostgreSQL preparation, production startup and migration gates, environment hardening, and deployment runbook | `.github/workflows/verify.yml`, `render.yaml`, `frontend/vercel.json`, `backend/scripts/start-production.sh`, `docs/DEPLOYMENT.md` |
 
 ## Completed
 
@@ -87,14 +88,24 @@ Phases 1 through 8 are complete and validated. RailOps AI is a release candidate
 - Replaced the placeholder Settings experience with a live System Status page and removed phase-number copy from user-facing runtime messages.
 - Added keyboard skip navigation, global visible focus treatment, tabular table numerals, semantic chart labels, and consistent release-state presentation.
 - Added the root README plus architecture, algorithm, API, deployment, report, syllabus, and viva documentation required for the release candidate.
+- Added a Render Blueprint for the backend monorepo root, check-gated deployment, health monitoring, secret environment inputs, and bounded PostgreSQL pool settings.
+- Added a production startup command that requires Render's `PORT`, applies Alembic migrations, verifies structural schema compatibility, and binds Uvicorn to `0.0.0.0`.
+- Added a Vercel project configuration for the `frontend` root, reproducible `npm ci` build, Node.js 24, and baseline browser response headers.
+- Added a secret-free GitHub Actions workflow that verifies migrations, schema, backend tests, frontend tests, TypeScript, lint, and production build.
+- Added separate safe backend and frontend environment templates; the frontend template contains no database setting or credential placeholder.
+- Made production fail fast for SQLite, wildcard CORS, non-HTTPS origins, and CORS values containing paths, queries, fragments, or credentials.
+- Added bounded PostgreSQL connection-pool configuration and verified the complete SQLAlchemy model schema compiles with the PostgreSQL dialect.
+- Reduced public scheduling and benchmark ceilings to 500,000 CSP nodes and 15 seconds of CP-SAT time.
+- Added a migration-safe, idempotent optional demo seed command and disabled direct `create_all` schema initialization in production.
+- Added frontend validation for malformed or non-HTTPS public production API origins while retaining localhost support for local verification.
 
 ## Known gaps
 
 - Track capacity greater than one is represented in topology data but Phase 6 movement reservations remain exclusive.
-- Deployment service manifests are not included; deployment commands and environment contracts are documented for Vercel and Render.
 - General assignment CRUD and arbitrary event-management APIs are not implemented; assignments remain governed by the validated scheduling lifecycle.
 - Demo workspaces are isolated by UUID but do not provide authentication, authorization, rate limiting, or server-issued session expiry.
 - Request size enforcement uses the declared `Content-Length`; an upstream proxy should also enforce body limits for chunked requests.
+- A live Neon PostgreSQL migration and live Render/Vercel endpoint test require owner accounts and credentials and have not been executed locally.
 
 ## Phase 1 validation
 
@@ -256,6 +267,31 @@ Phases 1 through 8 are complete and validated. RailOps AI is a release candidate
 - Use managed PostgreSQL, exact HTTPS CORS origins, and the documented Vercel/Render environment variables for deployment.
 - Before unrestricted public use, add authentication, authorization, server-issued session expiry, rate limiting, and proxy-level request-body enforcement.
 - Runtime solver timings are measured rather than guaranteed; repeat benchmarks on the target deployment when performance evidence is needed.
+
+## Phase 9 validation
+
+- `.venv/bin/python -m compileall -q app tests alembic`: passed.
+- `.venv/bin/pytest -q`: passed (71 tests; 7 upstream Python 3.14/Starlette/SQLite deprecation warnings).
+- PostgreSQL URL normalization, production database/CORS rejection, bounded pool construction, and full SQLAlchemy PostgreSQL DDL compilation passed automated tests.
+- Render Blueprint, production start script, Vercel JSON, environment separation, and secret-free GitHub workflow passed deployment regression tests.
+- `render.yaml` parsed successfully as YAML; `frontend/vercel.json` parsed successfully as JSON; the production Bash script passed syntax validation.
+- Active SQLite schema verification passed at Alembic head `20261020_0006` with no ORM drift.
+- Fresh SQLite migration through head passed in an isolated database. The deployment seed command created the demo once and made no changes on its second run.
+- `npm test`: passed (13 tests).
+- `npm run typecheck`: passed.
+- `npm run lint`: passed with no warnings.
+- `npm run build`: passed with Next.js 16.4.2 and Node.js 24; all application routes were statically generated.
+- Git tracking and secret-pattern checks found no committed database, local environment, build-output, dependency, private-key, or credential files.
+- A local PostgreSQL service was not available, and no Neon credentials were supplied. Real PostgreSQL migration, live CORS, persistence-across-redeploy, and public URL checks remain manual deployment gates.
+- PostgreSQL offline SQL generation is not supported because migration `20261020_0004` performs an online data transformation. Render uses the required online migration path.
+
+## Phase 9 handoff
+
+- Push the reviewed monorepo to GitHub and wait for `.github/workflows/verify.yml` to pass.
+- Create Neon, Render, and Vercel projects using the exact values in `docs/DEPLOYMENT.md`; enter secrets only in provider dashboards.
+- Set the final Vercel HTTPS origin in Render CORS, set the Render HTTPS origin in Vercel, and redeploy both services.
+- Run the documented health, CORS, session-isolation, workflow, refresh, and persistence checks against the actual URLs before describing the deployment as successful.
+- Phase 9 stops at production deployment preparation. No external service or later-phase functionality was created.
 
 ## Update policy
 

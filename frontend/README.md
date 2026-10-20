@@ -6,11 +6,13 @@ Professional operations workspace for the RailOps AI synthetic railway simulatio
 
 ```bash
 npm install
-cp ../.env.example .env.local
+cp .env.example .env.local
 npm run dev
 ```
 
 Set `NEXT_PUBLIC_API_BASE_URL` to the FastAPI origin, without an `/api` suffix. The default local backend origin is `http://localhost:8000`.
+
+For Vercel, select `frontend` as the monorepo root directory and set `NEXT_PUBLIC_API_BASE_URL` to the deployed Render HTTPS origin. The value is browser-visible and must never contain database credentials.
 
 ## Validation
 

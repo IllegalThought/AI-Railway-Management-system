@@ -133,6 +133,7 @@ export type ApiFailurePresentation = { title: string; message: string };
 export function describeApiFailure(error: unknown, endpoint: "analytics" | "operations" = "operations"): ApiFailurePresentation {
   if (!(error instanceof ApiError)) return { title: "Request failed", message: endpoint === "analytics" ? "Analytics could not be loaded." : "Operational data could not be loaded." };
   if (error.code === "API_NOT_CONFIGURED") return { title: "Backend not configured", message: error.message };
+  if (error.code === "API_CONFIGURATION_ERROR") return { title: "Backend configuration error", message: error.message };
   if (error.code === "BACKEND_UNREACHABLE") return { title: "Backend unreachable", message: error.message };
   if (error.code === "DATABASE_ERROR") return { title: "Database operation failed", message: "The backend is online, but its database could not complete this request." };
   if (error.code === "INVALID_SESSION") return { title: "Invalid workspace session", message: "The saved workspace identifier is no longer valid. Clear it or restore a valid workspace session, then refresh." };
@@ -146,6 +147,21 @@ let transientWorkspaceSessionId = "";
 
 export function getApiBaseUrl() {
   return (process.env.NEXT_PUBLIC_API_BASE_URL ?? "").trim().replace(/\/$/, "");
+}
+
+function validateApiBaseUrl(baseUrl: string): string | null {
+  if (!baseUrl) return "Backend API is not configured.";
+  let parsed: URL;
+  try { parsed = new URL(baseUrl); }
+  catch { return "NEXT_PUBLIC_API_BASE_URL must be a valid HTTP(S) origin."; }
+  if (!(["http:", "https:"] as string[]).includes(parsed.protocol) || parsed.pathname !== "/" || parsed.search || parsed.hash) {
+    return "NEXT_PUBLIC_API_BASE_URL must contain only an HTTP(S) origin without a path, query, or fragment.";
+  }
+  const localHost = parsed.hostname === "localhost" || parsed.hostname === "127.0.0.1" || parsed.hostname === "[::1]";
+  if (process.env.NODE_ENV === "production" && parsed.protocol !== "https:" && !localHost) {
+    return "Production backend requests require an HTTPS API origin.";
+  }
+  return null;
 }
 
 export function getWorkspaceSessionId() {
@@ -164,7 +180,14 @@ export function getWorkspaceSessionId() {
 
 async function apiRequest<T>(path: string, init: RequestInit = {}, scoped = true): Promise<T> {
   const baseUrl = getApiBaseUrl();
-  if (!baseUrl) throw new ApiError("Backend API is not configured.", undefined, "API_NOT_CONFIGURED");
+  const configurationIssue = validateApiBaseUrl(baseUrl);
+  if (configurationIssue) {
+    throw new ApiError(
+      configurationIssue,
+      undefined,
+      baseUrl ? "API_CONFIGURATION_ERROR" : "API_NOT_CONFIGURED",
+    );
+  }
   const headers = new Headers(init.headers);
   headers.set("Accept", "application/json");
   if (init.body) headers.set("Content-Type", "application/json");

@@ -1,0 +1,31 @@
+services:
+  - type: web
+    name: railops-ai-api
+    runtime: python
+    rootDir: backend
+    buildCommand: pip install -r requirements.txt
+    startCommand: bash scripts/start-production.sh
+    healthCheckPath: /api/health
+    autoDeployTrigger: checksPass
+    maxShutdownDelaySeconds: 30
+    envVars:
+      - key: APP_ENV
+        value: production
+      - key: APP_NAME
+        value: RailOps AI API
+      - key: APP_VERSION
+        value: 0.9.0
+      - key: DATABASE_URL
+        sync: false
+      - key: BACKEND_CORS_ORIGINS
+        sync: false
+      - key: MAX_REQUEST_BODY_BYTES
+        value: "1048576"
+      - key: DATABASE_POOL_SIZE
+        value: "5"
+      - key: DATABASE_MAX_OVERFLOW
+        value: "5"
+      - key: DATABASE_POOL_TIMEOUT_SECONDS
+        value: "10"
+      - key: DATABASE_POOL_RECYCLE_SECONDS
+        value: "300"

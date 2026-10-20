@@ -108,17 +108,22 @@ Incident replanning reads the active applied plan and persisted simulation minut
 backend/app/    FastAPI application, models, schemas, services, and database code
 backend/alembic Database migration environment and revisions
 backend/tests/  Pytest suite
+backend/scripts/ Render-compatible production startup and migration gate
 frontend/app/   Next.js routes, root layout, loading state, and global visual tokens
 frontend/components/ Application shell, Overview modules, and reusable UI primitives
 frontend/lib/   Typed API transport, navigation definitions, and shared utilities
 docs/           Architecture and delivery tracking
+render.yaml     Render monorepo web-service definition
+.github/workflows/ Secret-free GitHub release verification
 ```
 
 The frontend is independently deployable to Vercel. It contains no server-side domain logic and communicates with the Render-hosted FastAPI service over HTTPS/JSON.
 
 ## Configuration
 
-Runtime configuration comes from environment variables. Local secret-bearing `.env` files are ignored; `.env.example` documents variable names without credentials. Browser-exposed variables are limited to the non-secret `NEXT_PUBLIC_API_BASE_URL` backend origin. PostgreSQL URLs are normalized to the psycopg v3 SQLAlchemy driver. The default SQLite URL is resolved to the absolute `backend/railops.db` path, independent of process working directory. Production configuration rejects wildcard CORS origins.
+Runtime configuration comes from environment variables. Local secret-bearing `.env` files are ignored; root, backend, and frontend `.env.example` files document variable names without credentials. Browser-exposed variables are limited to the non-secret `NEXT_PUBLIC_API_BASE_URL` backend origin. PostgreSQL URLs are normalized to the psycopg v3 SQLAlchemy driver. The default SQLite URL is resolved to the absolute `backend/railops.db` path, independent of process working directory. Production fails fast unless the database is PostgreSQL and every CORS entry is an exact HTTPS origin.
+
+PostgreSQL connections use pre-ping plus bounded pool size, overflow, timeout, and recycle values. The default five-connection pool with five overflow slots avoids unbounded Render-to-Neon connections. Neon TLS remains part of the secret `DATABASE_URL`, normally through `sslmode=require`.
 
 `python -m app.database.verify_schema` is the development schema gate. It reports the exact active SQLite path, compares the current Alembic revision to repository heads, checks every mapped table and column, and uses Alembic metadata comparison to detect model/schema drift. A migration revision at head is not sufficient by itself; the structural comparison must also pass.
 
@@ -172,7 +177,7 @@ Analytics reads the authoritative persisted plan and simulation state. Delay met
 
 ## Release security and isolation
 
-The API validates request shapes and domain bounds before service execution. Declared bodies larger than `MAX_REQUEST_BODY_BYTES` receive a structured 413 response. API responses are non-cacheable and carry `X-Content-Type-Options`, `X-Frame-Options`, `Referrer-Policy`, and a restrictive `Permissions-Policy`. Production CORS requires explicit origins.
+The API validates request shapes and domain bounds before service execution. Declared bodies larger than `MAX_REQUEST_BODY_BYTES` receive a structured 413 response. API responses are non-cacheable and carry `X-Content-Type-Options`, `X-Frame-Options`, `Referrer-Policy`, and a restrictive `Permissions-Policy`. Production CORS requires explicit HTTPS origins. Public scheduling and benchmark requests are limited to 500,000 CSP search nodes and 15 seconds of CP-SAT execution.
 
 Scenario restore deletes and recreates records only inside the resolved workspace. No global database reset or destructive administration endpoint is exposed. Plan version checks and simulation revisions prevent stale writes. Solver requests are bounded by schema-level search and time limits.
 
@@ -194,11 +199,12 @@ The browser-generated workspace UUID is deliberately described as isolation rath
 
 ## Deployment baseline
 
-- GitHub is the source-control host.
-- Vercel hosts the frontend.
-- Render hosts the FastAPI backend.
-- PostgreSQL provides persistent production storage.
-- Cross-origin access and public API base URLs are configured through environment variables.
+- GitHub hosts the monorepo and runs backend migration/tests plus frontend tests/type/lint/build before deployment.
+- Vercel builds `frontend/` with Node.js 24 and injects the public Render HTTPS origin at build time.
+- Render builds `backend/`, waits for GitHub checks, runs Alembic plus structural schema verification, and starts Uvicorn on `0.0.0.0:$PORT`.
+- Neon PostgreSQL provides persistent production storage outside Render's ephemeral filesystem.
+- `app.database.seed_demo` is optional and idempotent. Production blocks `Base.metadata.create_all`; schema evolution must use Alembic.
+- External account creation, credentials, provider authorization, and live endpoint verification remain manual owner actions.
 
 ## Evolution policy
 

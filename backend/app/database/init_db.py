@@ -3,10 +3,15 @@ import argparse
 from app.database.base import Base
 from app.database.seed import seed_demo_data
 from app.database.session import SessionLocal, engine
+from app.config import get_settings
 from app import models  # noqa: F401 - imports models into SQLAlchemy metadata
 
 
 def initialize_database(*, seed: bool = False) -> str:
+    if get_settings().app_env == "production":
+        raise RuntimeError(
+            "Direct schema initialization is disabled in production; use Alembic migrations."
+        )
     Base.metadata.create_all(bind=engine)
     if not seed:
         return "Database schema initialized successfully."

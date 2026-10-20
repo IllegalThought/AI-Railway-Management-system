@@ -4,16 +4,33 @@ from sqlalchemy import create_engine, event
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session, sessionmaker
 
-from app.config import get_settings
+from app.config import Settings, get_settings
 
 
-def build_engine(database_url: str, *, echo: bool = False) -> Engine:
+def build_engine(
+    database_url: str,
+    *,
+    echo: bool = False,
+    pool_size: int = 5,
+    max_overflow: int = 5,
+    pool_timeout: int = 10,
+    pool_recycle: int = 300,
+) -> Engine:
     connect_args = {"check_same_thread": False} if database_url.startswith("sqlite") else {}
+    pool_options = {}
+    if not database_url.startswith("sqlite"):
+        pool_options = {
+            "pool_size": pool_size,
+            "max_overflow": max_overflow,
+            "pool_timeout": pool_timeout,
+            "pool_recycle": pool_recycle,
+        }
     database_engine = create_engine(
         database_url,
         echo=echo,
         pool_pre_ping=True,
         connect_args=connect_args,
+        **pool_options,
     )
     if database_url.startswith("sqlite"):
         @event.listens_for(database_engine, "connect")
@@ -24,7 +41,14 @@ def build_engine(database_url: str, *, echo: bool = False) -> Engine:
     return database_engine
 
 
-engine = build_engine(get_settings().database_url)
+runtime_settings: Settings = get_settings()
+engine = build_engine(
+    runtime_settings.database_url,
+    pool_size=runtime_settings.database_pool_size,
+    max_overflow=runtime_settings.database_max_overflow,
+    pool_timeout=runtime_settings.database_pool_timeout_seconds,
+    pool_recycle=runtime_settings.database_pool_recycle_seconds,
+)
 SessionLocal = sessionmaker(bind=engine, autoflush=False, expire_on_commit=False)
 
 

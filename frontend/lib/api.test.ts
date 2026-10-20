@@ -13,12 +13,23 @@ describe("typed API client", () => {
     await expect(getHealth()).rejects.toEqual(new ApiError("Backend API is not configured.", undefined, "API_NOT_CONFIGURED"));
   });
 
+  it("rejects malformed and insecure production API origins", async () => {
+    vi.stubEnv("NEXT_PUBLIC_API_BASE_URL", "https://api.example.test/v1");
+    await expect(getHealth()).rejects.toMatchObject({ code: "API_CONFIGURATION_ERROR" });
+
+    vi.stubEnv("NEXT_PUBLIC_API_BASE_URL", "http://api.example.test");
+    vi.stubEnv("NODE_ENV", "production");
+    await expect(getHealth()).rejects.toEqual(
+      new ApiError("Production backend requests require an HTTPS API origin.", undefined, "API_CONFIGURATION_ERROR"),
+    );
+  });
+
   it("loads and validates backend health", async () => {
     vi.stubEnv("NEXT_PUBLIC_API_BASE_URL", "https://api.example.test/");
     const payload = {
       status: "ok",
       service: "RailOps AI API",
-      version: "0.8.0",
+      version: "0.9.0",
       environment: "test",
       database: "available",
       message: "RailOps AI API is operational.",
