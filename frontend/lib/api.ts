@@ -76,6 +76,7 @@ export type SchedulePlan = {
   id: number; name: string; version: number; lifecycle_status: "draft" | "ready" | "applied" | "invalid" | "archived";
   solver_status: SolverStatus; engine: SchedulingEngine; horizon_start_minute: number; horizon_end_minute: number;
   maximum_delay_minutes: number; objective_value: number | null; is_validated: boolean; is_stale: boolean;
+  execution_time_ms: number | null;
   route_reservations_provisional: boolean; explanation: string; assignments: ScheduleAssignment[];
   platforms: Array<{ id: number; code: string; platform_type: string; length_meters: number; clearance_minutes: number; is_available: boolean }>;
   created_at: string; updated_at: string;
@@ -99,7 +100,24 @@ export type SimulationState = {
 };
 export type IncidentType = "train_arrival_delay" | "train_departure_delay" | "platform_closure" | "track_blockage" | "junction_closure" | "new_train_request";
 export type Incident = { id: number; incident_type: IncidentType; affected_resource: string; start_minute: number; duration_minutes: number; severity: "low" | "medium" | "high" | "critical"; status: "open" | "monitoring" | "resolved"; description: string; title: string; affected_train_ids: number[]; created_at: string };
-export type ReplanResult = { base_plan: SchedulePlan; revised_plan: SchedulePlan; valid: boolean; infeasible_reason: string | null; preserved_train_ids: number[]; affected_train_ids: number[]; changes: Array<{ train_identifier: string; before: ScheduleAssignment | null; after: ScheduleAssignment | null; change: string }>; message: string };
+export type ReplanResult = { base_plan: SchedulePlan; revised_plan: SchedulePlan; valid: boolean; infeasible_reason: string | null; preserved_train_ids: number[]; affected_train_ids: number[]; changes: Array<{ train_identifier: string; before: ScheduleAssignment | null; after: ScheduleAssignment | null; change: string; reason: string }>; message: string };
+
+export type BenchmarkResult = {
+  benchmark_id: string; scenario_identifier: string; engine: SchedulingEngine; solver_status: SolverStatus;
+  execution_time_ms: number; total_delay_minutes: number; average_delay_minutes: number; maximum_delay_minutes: number;
+  processed_train_count: number; objective_value: number | null; optimality_proven: boolean; explanation: string; created_at: string;
+};
+export type Analytics = {
+  scenario_identifier: string;
+  metrics: { plan_id: number | null; plan_version: number | null; total_arrival_delay_minutes: number; average_delay_minutes: number; maximum_delay_minutes: number; train_processing_count: number; active_conflicts: number; schedule_feasible: boolean; solver_execution_time_ms: number | null; rescheduling_impact: { base_plan_version: number | null; current_plan_version: number | null; changed_train_count: number; reassigned_train_count: number; delay_delta_minutes: number } };
+  platform_utilization: Array<{ platform_code: string; occupied_minutes: number; utilization_percent: number; train_count: number }>;
+  delay_distribution: Array<{ label: string; train_count: number }>;
+  operational_trends: Array<{ plan_version: number; engine: SchedulingEngine; total_delay_minutes: number; average_delay_minutes: number; execution_time_ms: number | null; created_at: string }>;
+  latest_benchmark: BenchmarkResult[];
+  platform_decisions: Array<{ train_identifier: string; assigned_platform: string; accepted_reasons: string[]; rejected_platforms: Array<{ platform_code: string; reasons: string[] }>; route_decision: string | null; route_explanation: string | null }>;
+  decision_insights: Array<{ category: string; title: string; summary: string; evidence: string[] }>;
+  message: string;
+};
 
 export type ValidationDetail = { field: string | null; message: string; type?: string };
 
@@ -108,6 +126,18 @@ export class ApiError extends Error {
     super(message);
     this.name = "ApiError";
   }
+}
+
+export type ApiFailurePresentation = { title: string; message: string };
+
+export function describeApiFailure(error: unknown, endpoint: "analytics" | "operations" = "operations"): ApiFailurePresentation {
+  if (!(error instanceof ApiError)) return { title: "Request failed", message: endpoint === "analytics" ? "Analytics could not be loaded." : "Operational data could not be loaded." };
+  if (error.code === "API_NOT_CONFIGURED") return { title: "Backend not configured", message: error.message };
+  if (error.code === "BACKEND_UNREACHABLE") return { title: "Backend unreachable", message: error.message };
+  if (error.code === "DATABASE_ERROR") return { title: "Database operation failed", message: "The backend is online, but its database could not complete this request." };
+  if (error.code === "INVALID_SESSION") return { title: "Invalid workspace session", message: "The saved workspace identifier is no longer valid. Clear it or restore a valid workspace session, then refresh." };
+  if (endpoint === "analytics") return { title: "Analytics endpoint failed", message: error.message };
+  return { title: "Operational request failed", message: error.message };
 }
 
 const workspaceStorageKey = "railops-session-id";
@@ -134,7 +164,7 @@ export function getWorkspaceSessionId() {
 
 async function apiRequest<T>(path: string, init: RequestInit = {}, scoped = true): Promise<T> {
   const baseUrl = getApiBaseUrl();
-  if (!baseUrl) throw new ApiError("Backend API is not configured.");
+  if (!baseUrl) throw new ApiError("Backend API is not configured.", undefined, "API_NOT_CONFIGURED");
   const headers = new Headers(init.headers);
   headers.set("Accept", "application/json");
   if (init.body) headers.set("Content-Type", "application/json");
@@ -144,7 +174,7 @@ async function apiRequest<T>(path: string, init: RequestInit = {}, scoped = true
     response = await fetch(`${baseUrl}${path}`, { ...init, headers, cache: "no-store" });
   } catch (error) {
     if (error instanceof DOMException && error.name === "AbortError") throw error;
-    throw new ApiError("Backend API could not be reached.");
+    throw new ApiError("Backend API could not be reached.", undefined, "BACKEND_UNREACHABLE");
   }
   if (!response.ok) {
     let payload: { error?: { message?: string; code?: string; details?: ValidationDetail[] } } = {};
@@ -182,3 +212,5 @@ export function getIncidents(signal?: AbortSignal) { return apiRequest<Incident[
 export function createIncident(data: { incident_type: IncidentType; affected_resource: string; start_minute: number; duration_minutes: number; severity: Incident["severity"]; description: string; new_train?: TrainInput }) { return apiRequest<Incident>("/api/incidents", { method: "POST", body: JSON.stringify(data) }); }
 export function updateIncidentStatus(id: number, status: Incident["status"]) { return apiRequest<Incident>(`/api/incidents/${id}`, { method: "PATCH", body: JSON.stringify({ status }) }); }
 export function replanIncident(data: { incident_id: number; base_plan_id: number; base_plan_version: number; expected_simulation_revision: number }) { return apiRequest<ReplanResult>("/api/incidents/replan", { method: "POST", body: JSON.stringify(data) }); }
+export function getAnalytics(signal?: AbortSignal) { return apiRequest<Analytics>("/api/analytics", { signal }); }
+export function runBenchmark() { return apiRequest<{ benchmark_id: string; scenario_identifier: string; results: BenchmarkResult[] }>("/api/analytics/benchmarks", { method: "POST", body: JSON.stringify({ maximum_delay_minutes: 30 }) }); }

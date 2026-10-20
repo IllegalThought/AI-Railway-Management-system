@@ -62,13 +62,17 @@ def replan(data: ReplanRequest, database: DatabaseSession, simulation_session: A
         old, new = before.get(train_id), after.get(train_id)
         if old is None:
             change = "Added"
+            reason = f"The {incident.title.lower()} introduced this service into the replanning problem."
         elif new is None:
             change = "Unassigned"
+            reason = f"No assignment satisfied the platform, timing, and route constraints after {incident.title.lower()}."
         elif (old.platform_id, old.occupancy_start_minute, old.occupancy_end_minute) == (new.platform_id, new.occupancy_start_minute, new.occupancy_end_minute):
             change = "Preserved" if train_id in preserved else "Unchanged"
+            reason = "The movement had already started and was preserved as a non-revocable reservation." if train_id in preserved else "The existing allocation still satisfied all platform, delay, and route constraints."
         else:
             change = "Reallocated"
-        changes.append(AssignmentChange(train_identifier=(new or old).train_identifier, before=old, after=new, change=change))
+            reason = f"The allocation changed after {incident.title.lower()} so the revised plan could satisfy current availability, delay, and reservation constraints."
+        changes.append(AssignmentChange(train_identifier=(new or old).train_identifier, before=old, after=new, change=change, reason=reason))
     valid = revised.is_validated and revised.route_validated
     reason = None if valid else (issues[0].message if issues else revised.explanation)
     return ReplanResponse(base_plan=before_response, revised_plan=after_response, valid=valid, infeasible_reason=reason, preserved_train_ids=preserved, affected_train_ids=affected, changes=changes, message="A validated revised plan is ready for operator review." if valid else "No valid revised plan could be produced; the active plan was left unchanged.")

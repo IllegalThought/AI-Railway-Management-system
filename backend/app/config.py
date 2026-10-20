@@ -1,7 +1,12 @@
 from functools import lru_cache
+from pathlib import Path
 
 from pydantic import Field, computed_field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+from sqlalchemy.engine import make_url
+
+
+BACKEND_ROOT = Path(__file__).resolve().parents[1]
 
 
 class Settings(BaseSettings):
@@ -19,7 +24,7 @@ class Settings(BaseSettings):
     app_name: str = Field(default="RailOps AI API", validation_alias="APP_NAME")
     app_version: str = Field(default="0.1.0", validation_alias="APP_VERSION")
     database_url: str = Field(
-        default="sqlite:///./railops.db", validation_alias="DATABASE_URL"
+        default=f"sqlite:///{BACKEND_ROOT / 'railops.db'}", validation_alias="DATABASE_URL"
     )
     backend_cors_origins: str = Field(
         default="http://localhost:3000", validation_alias="BACKEND_CORS_ORIGINS"
@@ -43,6 +48,13 @@ class Settings(BaseSettings):
             return database_url.replace("postgres://", "postgresql+psycopg://", 1)
         if database_url.startswith("postgresql://"):
             return database_url.replace("postgresql://", "postgresql+psycopg://", 1)
+        if database_url.startswith("sqlite"):
+            url = make_url(database_url)
+            if url.database and url.database != ":memory:":
+                database_path = Path(url.database).expanduser()
+                if not database_path.is_absolute():
+                    database_path = (BACKEND_ROOT / database_path).resolve()
+                return url.set(database=str(database_path)).render_as_string(hide_password=False)
         return database_url
 
     @computed_field

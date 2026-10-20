@@ -7,6 +7,7 @@ from sqlalchemy import (
     CheckConstraint,
     DateTime,
     Enum,
+    Float,
     ForeignKey,
     Index,
     Integer,
@@ -58,6 +59,7 @@ class SimulationSession(TimestampMixin, Base):
     track_nodes: Mapped[list[TrackNode]] = relationship(back_populates="session", cascade="all, delete-orphan")
     track_edges: Mapped[list[TrackEdge]] = relationship(back_populates="session", cascade="all, delete-orphan")
     plans: Mapped[list[SchedulingPlan]] = relationship(back_populates="session", cascade="all, delete-orphan")
+    benchmarks: Mapped[list[SolverBenchmark]] = relationship(back_populates="session", cascade="all, delete-orphan")
     incidents: Mapped[list[Incident]] = relationship(back_populates="session", cascade="all, delete-orphan")
     events: Mapped[list[OperationalEvent]] = relationship(back_populates="session", cascade="all, delete-orphan")
     simulation_state: Mapped[SimulationState | None] = relationship(back_populates="session", cascade="all, delete-orphan", uselist=False)
@@ -194,9 +196,33 @@ class SchedulingPlan(TimestampMixin, Base):
     is_validated: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     route_validated: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     explanation: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    execution_time_ms: Mapped[float | None] = mapped_column(Float, nullable=True)
 
     session: Mapped[SimulationSession] = relationship(back_populates="plans")
     assignments: Mapped[list[TrainAssignment]] = relationship(back_populates="plan", cascade="all, delete-orphan")
+
+
+class SolverBenchmark(TimestampMixin, Base):
+    __tablename__ = "solver_benchmarks"
+    __table_args__ = (
+        UniqueConstraint("benchmark_id", "engine", name="uq_benchmark_engine"),
+        CheckConstraint("execution_time_ms >= 0", name="ck_benchmark_execution_nonnegative"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    session_id: Mapped[int] = mapped_column(ForeignKey("simulation_sessions.id", ondelete="CASCADE"), nullable=False, index=True)
+    benchmark_id: Mapped[str] = mapped_column(String(36), nullable=False, index=True)
+    scenario_identifier: Mapped[str] = mapped_column(String(120), nullable=False, index=True)
+    engine: Mapped[str] = mapped_column(String(20), nullable=False)
+    solver_status: Mapped[str] = mapped_column(String(20), nullable=False)
+    execution_time_ms: Mapped[float] = mapped_column(Float, nullable=False)
+    total_delay_minutes: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    maximum_delay_minutes: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    processed_train_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    objective_value: Mapped[int | None] = mapped_column(Integer)
+    explanation: Mapped[str] = mapped_column(Text, nullable=False, default="")
+
+    session: Mapped[SimulationSession] = relationship(back_populates="benchmarks")
 
 
 class TrainAssignment(TimestampMixin, Base):

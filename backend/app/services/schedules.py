@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from time import perf_counter
+
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session, selectinload
 
@@ -47,14 +49,16 @@ def generate_schedule(database: Session, simulation_session: SimulationSession, 
     train_problems, platform_problems = _problems(trains, platforms)
     domains = build_domains(train_problems, platform_problems, horizon_start=start, horizon_end=end, maximum_delay=request.maximum_delay_minutes)
     preferred = _preferred_platforms(database, simulation_session.id)
+    started = perf_counter()
     if request.engine == SchedulingEngine.FCFS:
         result = solve_fcfs(train_problems, platform_problems, domains, preferred)
     elif request.engine == SchedulingEngine.CSP:
         result = solve_csp(train_problems, platform_problems, domains, preferred, node_limit=request.search_limit)
     else:
         result = solve_cp_sat(train_problems, platform_problems, domains, preferred, time_limit_seconds=request.time_limit_seconds)
+    execution_time_ms = (perf_counter() - started) * 1000
     version = (database.scalar(select(func.max(SchedulingPlan.version)).where(SchedulingPlan.session_id == simulation_session.id)) or 0) + 1
-    plan = SchedulingPlan(session_id=simulation_session.id, name=f"Dispatch plan v{version}", version=version, status=PlanStatus.DRAFT, engine=request.engine.value, solver_status=result.status.value, objective_value=result.objective, maximum_delay_minutes=request.maximum_delay_minutes, is_validated=False, route_validated=False, explanation=result.explanation, horizon_start_minute=start, horizon_end_minute=end)
+    plan = SchedulingPlan(session_id=simulation_session.id, name=f"Dispatch plan v{version}", version=version, status=PlanStatus.DRAFT, engine=request.engine.value, solver_status=result.status.value, objective_value=result.objective, maximum_delay_minutes=request.maximum_delay_minutes, is_validated=False, route_validated=False, explanation=result.explanation, execution_time_ms=execution_time_ms, horizon_start_minute=start, horizon_end_minute=end)
     database.add(plan)
     database.flush()
     for train in trains:

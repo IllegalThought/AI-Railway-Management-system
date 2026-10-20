@@ -27,7 +27,7 @@ SQLAlchemy persistence layer
 
 ## Implemented responsibilities
 
-### Frontend (Phases 2–6)
+### Frontend (Phases 2–7)
 
 - Presents a professional, responsive operations workspace using the Next.js App Router, React, and strict TypeScript.
 - Uses Tailwind CSS and shadcn/ui-compatible primitives as a modular design-system foundation, with Lucide icons and Recharts available for verified future datasets.
@@ -40,6 +40,9 @@ SQLAlchemy persistence layer
 - Provides an SVG Network Monitor for directed topology, selected paths, train/platform placement, blocked resources, movement indicators, reservation intervals, and inference explanations.
 - Provides Live Operations with backend-controlled playback, reservation-derived train progress, live platform occupation, current signals, and persisted event history.
 - Provides Incident Center for all supported disruption types, affected-service inspection, dynamic replanning, before/after comparisons, infeasibility reporting, and revised-plan application.
+- Provides Performance Analytics with Recharts views for shared-state solver comparison, delay distribution, platform utilization, solver execution time, and schedule trends.
+- Presents contextual decision evidence for platform acceptance/rejection, route reservation and knowledge-base outcomes, and incident-driven replanning changes.
+- Uses actual analytics metrics on Overview for total and average delay, processed trains, schedule feasibility, solver timing, and active conflict signals.
 - Keeps frontend presentation and transport concerns separate from backend domain and optimization logic.
 - Keeps all user-facing content in English and identifies the product as a synthetic simulation.
 
@@ -53,6 +56,7 @@ SQLAlchemy persistence layer
 - Resolves every operational request to an isolated simulation session through `X-RailOps-Session`; new session UUIDs receive the default 20-train, 5-platform scenario.
 - Keeps scenario generation and record mutation in service modules; route handlers remain transport-focused.
 - Keeps optimization in `app/ai`: a custom CSP uses MRV, recursive backtracking, and forward checking; FCFS provides a deterministic baseline; OR-Tools CP-SAT uses optional intervals and non-overlap constraints; an independent validator rechecks all persisted assignments.
+- Keeps analytical aggregation and decision explanation in `app/services/analytics.py`; API handlers do not calculate business metrics.
 - Keeps route intelligence in `app/ai` and `app/services/network.py`: a custom A* uses an admissible geometric heuristic, NetworkX Dijkstra independently checks shortest-path cost, and the reservation service checks half-open track and switch intervals.
 - Uses restricted forward chaining over explicit movement predicates. GREEN requires complete platform, compatibility, and route facts; blocked resources or occupied track derive RED; missing mandatory facts remain YELLOW.
 
@@ -77,7 +81,9 @@ The schema contains:
 - isolated simulation sessions;
 - incidents, a persisted simulation control row, and append-only operational events.
 
-Phase 3 adds train service status and delay minutes, platform availability and an unavailable reason, and a scenario key on each simulation session. Phase 4 adds plan version, engine, solver outcome, objective, maximum delay, validation state and explanation plus assignment delay and reassignment state. Phase 5 adds entry/exit points, node layout coordinates, route validation state, movements, and reservations. Phase 6 adds typed incident timing and a one-to-one persisted simulation state through Alembic revision `20261020_0005`. These fields remain portable across SQLite and PostgreSQL.
+Phase 3 adds train service status and delay minutes, platform availability and an unavailable reason, and a scenario key on each simulation session. Phase 4 adds plan version, engine, solver outcome, objective, maximum delay, validation state and explanation plus assignment delay and reassignment state. Phase 5 adds entry/exit points, node layout coordinates, route validation state, movements, and reservations. Phase 6 adds typed incident timing and a one-to-one persisted simulation state. Phase 7 adds measured execution time to schedules and scenario-scoped solver benchmark records through Alembic revision `20261020_0006`. These fields remain portable across SQLite and PostgreSQL.
+
+Each benchmark batch has a UUID and a scenario identifier composed from the scenario key and isolated workspace UUID. FCFS, custom CSP, and CP-SAT receive the same loaded trains, platforms, compatibility mappings, platform availability, scheduling horizon, maximum delay, preferred assignments, and candidate domains. Individual rows retain solver status, wall-clock execution time, delays, processed count, objective, and the solver's factual explanation. Optimality is exposed only when the retained status is `OPTIMAL`.
 
 Ready scheduling plans are not silently left valid after train or platform changes. Ready plans return to draft, applied plans become invalid, route validation is cleared, and the mutation response includes `schedule_validation_required: true`. Combined platform and route validation must pass again before a changed plan can be applied.
 
@@ -109,7 +115,9 @@ The frontend is independently deployable to Vercel. It contains no server-side d
 
 ## Configuration
 
-Runtime configuration comes from environment variables. Local secret-bearing `.env` files are ignored; `.env.example` documents variable names without credentials. Browser-exposed variables are limited to the non-secret `NEXT_PUBLIC_API_BASE_URL` backend origin. PostgreSQL URLs are normalized to the psycopg v3 SQLAlchemy driver. Production configuration rejects wildcard CORS origins.
+Runtime configuration comes from environment variables. Local secret-bearing `.env` files are ignored; `.env.example` documents variable names without credentials. Browser-exposed variables are limited to the non-secret `NEXT_PUBLIC_API_BASE_URL` backend origin. PostgreSQL URLs are normalized to the psycopg v3 SQLAlchemy driver. The default SQLite URL is resolved to the absolute `backend/railops.db` path, independent of process working directory. Production configuration rejects wildcard CORS origins.
+
+`python -m app.database.verify_schema` is the development schema gate. It reports the exact active SQLite path, compares the current Alembic revision to repository heads, checks every mapped table and column, and uses Alembic metadata comparison to detect model/schema drift. A migration revision at head is not sufficient by itself; the structural comparison must also pass.
 
 ## Frontend data flow
 
@@ -129,7 +137,7 @@ The session resolver looks up the public workspace UUID or creates an isolated n
 
 The browser validates and retains its generated UUID in local storage, so navigation and refresh reuse the same workspace. Malformed stored identifiers are replaced locally; the backend independently validates every header. Archived or expired sessions are rejected, while sessions with no expiry remain persistent. Database exceptions trigger request-session rollback, emit server-side exception logs with the request method and path, and return a structured `503 DATABASE_ERROR` without exposing internal details.
 
-## Phase 6 API surface
+## Phase 7 API surface
 
 ```text
 GET/POST       /api/trains
@@ -149,11 +157,15 @@ POST           /api/simulation/control
 GET/POST       /api/incidents
 PATCH          /api/incidents/{id}
 POST           /api/incidents/replan
+GET            /api/analytics
+POST           /api/analytics/benchmarks
 ```
 
 Scenario restore deletes and recreates only records owned by the active simulation session. The five deterministic scenario definitions are normal traffic, congested station, multiple delayed trains, platform closure, and track closure.
 
 Generate reads current session resources and persists actual solver assignments. Validate independently reloads current resources, checks platform constraints, calculates A* routes, and persists conflict-free reservations plus inference decisions. Apply changes lifecycle state only after both validation layers and stale-version checks pass.
+
+Analytics reads the authoritative persisted plan and simulation state. Delay metrics come from assignments; processing count comes from the simulation minute; platform utilization comes from occupancy intervals and the plan horizon; active conflicts come from active incidents and RED route decisions; feasibility requires a feasible solver outcome plus both validation layers. Decision explanations reuse compatibility, availability, length, type, delay, overlap, route reservation, inference, and replanning facts rather than generated claims.
 
 ## Quality boundaries
 

@@ -9,6 +9,7 @@ from app.api.schedules import router as schedules_router
 from app.api.trains import router as trains_router
 from app.api.simulation import router as simulation_router
 from app.api.incidents import router as incidents_router
+from app.api.analytics import router as analytics_router
 
 
 api_router = APIRouter(prefix="/api")
@@ -21,4 +22,5 @@ api_router.include_router(schedules_router)
 api_router.include_router(network_router)
 api_router.include_router(simulation_router)
 api_router.include_router(incidents_router)
+api_router.include_router(analytics_router)
 

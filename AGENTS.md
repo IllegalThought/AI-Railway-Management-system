@@ -38,4 +38,5 @@ All user-facing content must be written in English. This includes navigation, pa
 14. Treat the platform strictly as a synthetic simulation, never as certified railway signaling software.
 15. Keep local and production database configuration portable between SQLite and PostgreSQL.
 16. Update `docs/PROGRESS.md` and `docs/ARCHITECTURE.md` when implementation changes project status or architecture.
+17. After every SQLAlchemy model change, create or verify the matching Alembic migration, upgrade an existing database copy, and run `python -m app.database.verify_schema` against the intended runtime database. Do not treat an Alembic revision alone as proof of schema compatibility.
 

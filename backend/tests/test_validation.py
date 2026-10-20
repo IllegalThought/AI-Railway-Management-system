@@ -77,3 +77,9 @@ def test_postgresql_url_uses_declared_psycopg_driver() -> None:
 
     assert settings.database_url.startswith("postgresql+psycopg://")
 
+
+def test_relative_sqlite_url_is_anchored_to_backend_directory() -> None:
+    settings = Settings(DATABASE_URL="sqlite:///./railops.db")
+
+    assert settings.database_url.endswith("/backend/railops.db")
+

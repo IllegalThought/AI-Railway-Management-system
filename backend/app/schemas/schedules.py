@@ -77,6 +77,7 @@ class SchedulePlanResponse(ApiModel):
     horizon_end_minute: int
     maximum_delay_minutes: int
     objective_value: int | None
+    execution_time_ms: float | None
     is_validated: bool
     is_stale: bool
     route_reservations_provisional: bool = True

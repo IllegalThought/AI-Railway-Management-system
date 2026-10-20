@@ -4,7 +4,7 @@ Last updated: 2026-10-20
 
 ## Current status
 
-Phases 1 through 6 are complete and validated. RailOps AI now includes a persisted deterministic live simulation, incident mutation workflows, and constraint-validated dynamic replanning on top of platform allocation and directed route reservations.
+Phases 1 through 7 are complete and validated. RailOps AI now includes persisted operational analytics, consistent three-engine benchmarks, evidence-backed decision insights, and a refined analytics and Overview experience on top of the live simulation and dynamic replanning workflows.
 
 ## Phase tracking
 
@@ -17,6 +17,7 @@ Phases 1 through 6 are complete and validated. RailOps AI now includes a persist
 | Phase 4 | Complete | CSP, FCFS, CP-SAT platform scheduling, independent validation, version-safe apply workflow, and interactive Dispatch Board | `backend/app/ai/`, `backend/app/services/schedules.py`, `backend/tests/test_phase4_scheduling.py`, `frontend/components/dispatch/` |
 | Phase 5 | Complete | NetworkX topology, custom A*, track and switch reservations, forward-chaining inference, combined plan validation, and interactive Network Monitor | `backend/app/ai/routing.py`, `backend/app/ai/inference.py`, `backend/app/services/network.py`, `backend/tests/test_phase5_network.py`, `frontend/components/network/` |
 | Phase 6 | Complete | Persisted backend simulation clock, validated live movement state, incident management, committed-movement-safe dynamic replanning, schedule comparison, Live Operations, and Incident Center | `backend/app/services/simulation.py`, `backend/app/services/incidents.py`, `backend/tests/test_phase6_simulation.py`, `frontend/components/live/`, `frontend/components/incidents/` |
+| Phase 7 | Complete | Actual operational metrics, persisted FCFS/CSP/CP-SAT benchmarks, decision explanations, incident-change rationales, Recharts analytics, and measured Overview KPIs | `backend/app/services/analytics.py`, `backend/app/api/analytics.py`, `backend/tests/test_phase7_analytics.py`, `frontend/components/analytics/`, `frontend/lib/analytics.test.ts` |
 
 ## Completed
 
@@ -86,8 +87,7 @@ Phases 1 through 6 are complete and validated. RailOps AI now includes a persist
 - Track capacity greater than one is represented in topology data but Phase 6 movement reservations remain exclusive.
 - Deployment service manifests are not part of Phase 1.
 - General assignment CRUD and arbitrary event-management APIs are not implemented; assignments remain governed by the validated scheduling lifecycle.
-- Performance Analytics and Settings remain later-phase shell destinations.
-- Recharts is available in the frontend dependency baseline, but no operational chart is rendered because there is no verified time-series endpoint in the current backend.
+- Settings remains a later-phase shell destination.
 
 ## Phase 1 validation
 
@@ -196,6 +196,36 @@ Phases 1 through 6 are complete and validated. RailOps AI now includes a persist
 - Generate, validate, and apply a dispatch plan before starting playback. The simulation clock and current plan survive refreshes and navigation in the isolated workspace.
 - Incident replans are reviewable but are not applied automatically. The operator must apply a valid latest revision from the before/after comparison.
 - Phase 6 stops at live synthetic railway simulation, incident management, and dynamic AI replanning.
+
+## Phase 7 validation
+
+- `.venv/bin/python -m compileall -q app tests alembic`: passed.
+- `.venv/bin/python -m pytest -q`: passed (56 tests; one upstream Starlette deprecation warning).
+- Fresh SQLite Alembic upgrade through `20261020_0006`: passed.
+- Fresh database initialization after migration: passed.
+- `npm run typecheck`: passed.
+- `npm run lint`: passed with no warnings.
+- `npm test`: passed (11 tests).
+- `npm run build`: passed; Performance Analytics and all application routes were statically generated.
+
+## Phase 7 handoff
+
+- Apply the analytics migration before starting the backend: `cd backend && .venv/bin/alembic upgrade head`.
+- `GET /api/analytics` reports plan-derived delays, processing, conflict, feasibility, platform-use, trend, rescheduling, and decision evidence. It returns explicit empty datasets until a plan exists.
+- `POST /api/analytics/benchmarks` runs FCFS, custom CSP, and OR-Tools CP-SAT against the same immutable station snapshot, hard-constraint domains, horizon, and maximum delay. Each result is persisted under one benchmark UUID and the workspace scenario identifier.
+- Solver status and measured wall-clock execution time are retained. Only a CP-SAT `OPTIMAL` status produces an optimality-proven flag or claim.
+- Phase 7 stops at performance analytics, AI decision insights, incident-change explanations, and dashboard refinement. No later-phase scope was implemented.
+
+## Phase 7 schema compatibility repair
+
+- Diagnosed the Analytics `503` as Phase 7 ORM code querying a SQLite schema that did not yet contain `scheduling_plans.execution_time_ms`. Revision `20261020_0006` already contained the correct nullable `FLOAT` addition and benchmark table; no migration history was rewritten.
+- Confirmed FastAPI settings and Alembic resolve `/Users/panda/railops-ai/backend/railops.db`. The local default is now anchored to the backend directory so a different launch working directory cannot silently select another SQLite file.
+- Created a SQLite online backup at `/private/tmp/railops-ai-backups/railops-phase7-schema-repair-20261020-2221.db`. Both the source and backup passed `PRAGMA integrity_check` and retained 2 sessions, 40 trains, 10 platforms, and 10 scheduling plans before API verification.
+- Directly inspected `PRAGMA table_info(scheduling_plans)`: `execution_time_ms FLOAT NULL` is present. Directly confirmed Alembic revision and head are both `20261020_0006`.
+- Added `python -m app.database.verify_schema` to detect a missing database file, relative SQLite path, pending migration, missing table/column, or ORM/Alembic drift. Made the ORM timing types explicitly `Float` to match the migration.
+- Added an upgrade regression test that creates a real Phase 6 database with an existing applied plan, proves the verifier detects the pending column, upgrades through Phase 7, confirms the plan and nullable timing remain readable, calls Analytics and simulation state, and generates a new timed schedule.
+- Refined frontend failure states so backend connectivity, database failures, invalid sessions, Analytics endpoint failures, and legitimate empty Analytics data are presented separately. Overview remains operational when only Analytics fails.
+- Live verification against the existing applied-plan session returned HTTP 200 for Health, Overview, Current Schedule, Network Monitor, Simulation State, Incidents, and Analytics. A persisted three-engine benchmark returned FCFS `FEASIBLE`, CSP `FEASIBLE`, and CP-SAT `OPTIMAL`; the subsequent Analytics read returned the real delays, five platform utilization rows, measured execution times, and 20 decision explanations.
 
 ## Update policy
 

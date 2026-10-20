@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from time import perf_counter
+
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session, selectinload
 
@@ -153,9 +155,11 @@ def replan(database: Session, simulation_session: SimulationSession, incident: I
         if assignment.occupancy_end_minute <= current or first <= current:
             domains[assignment.train_id] = [Candidate(assignment.platform_id, assignment.occupancy_start_minute, assignment.occupancy_end_minute, assignment.delay_minutes)]
             preserved.append(assignment.train_id)
+    started = perf_counter()
     result = solve_csp(train_problems, platform_problems, domains, {item.train_id: item.platform_id for item in base.assignments}, node_limit=500_000)
+    execution_time_ms = (perf_counter() - started) * 1000
     version = (database.scalar(select(func.max(SchedulingPlan.version)).where(SchedulingPlan.session_id == simulation_session.id)) or 0) + 1
-    plan = SchedulingPlan(session_id=simulation_session.id, name=f"Incident replan v{version}", version=version, status=PlanStatus.DRAFT, engine="csp", solver_status=result.status.value, objective_value=result.objective, maximum_delay_minutes=max(base.maximum_delay_minutes, 60), is_validated=False, route_validated=False, explanation=result.explanation, horizon_start_minute=start, horizon_end_minute=end)
+    plan = SchedulingPlan(session_id=simulation_session.id, name=f"Incident replan v{version}", version=version, status=PlanStatus.DRAFT, engine="csp", solver_status=result.status.value, objective_value=result.objective, maximum_delay_minutes=max(base.maximum_delay_minutes, 60), is_validated=False, route_validated=False, explanation=result.explanation, execution_time_ms=execution_time_ms, horizon_start_minute=start, horizon_end_minute=end)
     database.add(plan)
     database.flush()
     previous = {item.train_id: item for item in base.assignments}

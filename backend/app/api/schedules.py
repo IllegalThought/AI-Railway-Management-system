@@ -32,6 +32,7 @@ def plan_response(database: DatabaseSession, plan: SchedulingPlan) -> SchedulePl
         horizon_end_minute=plan.horizon_end_minute,
         maximum_delay_minutes=plan.maximum_delay_minutes,
         objective_value=plan.objective_value,
+        execution_time_ms=plan.execution_time_ms,
         is_validated=plan.is_validated,
         is_stale=schedules.is_stale(database, plan),
         route_reservations_provisional=not plan.route_validated,

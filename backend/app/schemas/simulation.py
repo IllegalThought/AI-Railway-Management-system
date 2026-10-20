@@ -119,6 +119,7 @@ class AssignmentChange(ApiModel):
     before: ScheduleAssignment | None
     after: ScheduleAssignment | None
     change: str
+    reason: str
 
 
 class ReplanResponse(ApiModel):

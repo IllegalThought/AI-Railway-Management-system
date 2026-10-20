@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { ApiError, applySchedule, createTrain, generateSchedule, getHealth, getTrains, validateSchedule } from "./api";
+import { ApiError, applySchedule, createTrain, describeApiFailure, generateSchedule, getHealth, getTrains, validateSchedule } from "./api";
 
 describe("typed API client", () => {
   afterEach(() => {
@@ -10,7 +10,7 @@ describe("typed API client", () => {
 
   it("reports a missing backend origin", async () => {
     vi.stubEnv("NEXT_PUBLIC_API_BASE_URL", "");
-    await expect(getHealth()).rejects.toEqual(new ApiError("Backend API is not configured."));
+    await expect(getHealth()).rejects.toEqual(new ApiError("Backend API is not configured.", undefined, "API_NOT_CONFIGURED"));
   });
 
   it("loads and validates backend health", async () => {
@@ -99,6 +99,13 @@ describe("typed API client", () => {
     const error = await getTrains().catch((caught) => caught);
     expect(error).toBeInstanceOf(ApiError);
     expect((error as ApiError).details[0].field).toBe("priority");
+  });
+
+  it("distinguishes database, session, endpoint, and connectivity failures", () => {
+    expect(describeApiFailure(new ApiError("Database failed", 503, "DATABASE_ERROR"), "analytics").title).toBe("Database operation failed");
+    expect(describeApiFailure(new ApiError("Bad session", 400, "INVALID_SESSION"), "analytics").title).toBe("Invalid workspace session");
+    expect(describeApiFailure(new ApiError("Offline", undefined, "BACKEND_UNREACHABLE"), "analytics").title).toBe("Backend unreachable");
+    expect(describeApiFailure(new ApiError("Endpoint failed", 500, "INTERNAL_ERROR"), "analytics").title).toBe("Analytics endpoint failed");
   });
 
   it("sends train mutations to the persistent API", async () => {

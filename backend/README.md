@@ -20,6 +20,7 @@ python -m pip install --upgrade pip
 python -m pip install -r requirements.txt
 cp -n ../.env.example .env
 alembic upgrade head
+python -m app.database.verify_schema
 python -m app.database.init_db --seed
 uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
 ```
@@ -36,7 +37,7 @@ Operational endpoints include:
 - real workspace metrics at `/api/overview`.
 - schedule generation, validation, provisional apply, and current-plan reads at `/api/schedules`.
 
-`alembic upgrade head` is the preferred schema-management command. The initialization command is safe to rerun and can create the idempotent synthetic demonstration dataset with `--seed`.
+`alembic upgrade head` is the preferred schema-management command. Run `python -m app.database.verify_schema` after every migration; it fails on a missing table or column, a pending revision, model/schema drift, or a relative/missing active SQLite path. The initialization command is safe to rerun and can create the idempotent synthetic demonstration dataset with `--seed`.
 
 ## Tests
 
@@ -44,6 +45,7 @@ From `backend/` with the virtual environment active:
 
 ```bash
 pytest
+python -m app.database.verify_schema
 ```
 
 ## Configuration
@@ -51,7 +53,7 @@ pytest
 - `APP_ENV`: `development`, `test`, or `production`.
 - `APP_NAME`: API display name.
 - `APP_VERSION`: API version exposed through health and OpenAPI.
-- `DATABASE_URL`: SQLAlchemy URL. The local default is `sqlite:///./railops.db`; deployment can use `postgresql+psycopg://...`.
+- `DATABASE_URL`: SQLAlchemy URL. The local default is anchored to `backend/railops.db` regardless of the launch working directory; deployment can use `postgresql+psycopg://...`.
 - `BACKEND_CORS_ORIGINS`: comma-separated allowed origins. Wildcard origins are rejected in production.
 - `NEXT_PUBLIC_API_BASE_URL`: non-secret frontend API origin, without an `/api` suffix.
 
