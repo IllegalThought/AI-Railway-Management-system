@@ -25,7 +25,7 @@ export const navigationItems: NavigationItem[] = [
   { href: "/incident-center", label: "Incident Center", description: "Operational disruptions and response", icon: Siren },
   { href: "/trains-platforms", label: "Trains & Platforms", description: "Fleet and platform records", icon: TrainFront },
   { href: "/performance-analytics", label: "Performance Analytics", description: "Service and resource performance", icon: ChartNoAxesCombined },
-  { href: "/settings", label: "Settings", description: "Workspace and system configuration", icon: Settings },
+  { href: "/settings", label: "System Status", description: "Runtime connectivity and workspace boundaries", icon: Settings },
 ];
 
 export function getNavigationItem(pathname: string) {

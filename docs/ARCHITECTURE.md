@@ -2,7 +2,7 @@
 
 ## System purpose
 
-RailOps AI is a synthetic railway operations management and decision-support simulation. It will combine an operational web interface with optimization, graph analysis, and explainable AI workflows. It is not certified signaling software and must not be used to control real railway infrastructure.
+RailOps AI is a synthetic railway operations management and decision-support simulation. It combines an operational web interface with optimization, graph analysis, and explainable AI workflows. It is not certified signaling software and must not be used to control real railway infrastructure.
 
 ## System context
 
@@ -27,12 +27,12 @@ SQLAlchemy persistence layer
 
 ## Implemented responsibilities
 
-### Frontend (Phases 2–7)
+### Frontend (Phases 2–8)
 
 - Presents a professional, responsive operations workspace using the Next.js App Router, React, and strict TypeScript.
-- Uses Tailwind CSS and shadcn/ui-compatible primitives as a modular design-system foundation, with Lucide icons and Recharts available for verified future datasets.
+- Uses Tailwind CSS and shadcn/ui-compatible primitives as a modular design-system foundation, with Lucide icons and Recharts for measured operational datasets.
 - Provides a shared application shell with desktop and mobile navigation, a top header, consistent workspace status language, loading states, unavailable states, tables, KPI cards, and toast notifications.
-- Exposes routes for Overview, Live Operations, Dispatch Board, Network Monitor, Incident Center, Trains & Platforms, Performance Analytics, and Settings.
+- Exposes routes for Overview, Live Operations, Dispatch Board, Network Monitor, Incident Center, Trains & Platforms, Performance Analytics, and System Status.
 - Uses `NEXT_PUBLIC_API_BASE_URL` as the public backend origin and a typed client boundary in `frontend/lib/api.ts`.
 - Uses a browser-generated UUID stored under `railops-session-id` and sends it as `X-RailOps-Session` on operational API requests.
 - Provides fully integrated train management, platform availability management, scenario restore, and real operational Overview metrics.
@@ -45,6 +45,8 @@ SQLAlchemy persistence layer
 - Uses actual analytics metrics on Overview for total and average delay, processed trains, schedule feasibility, solver timing, and active conflict signals.
 - Keeps frontend presentation and transport concerns separate from backend domain and optimization logic.
 - Keeps all user-facing content in English and identifies the product as a synthetic simulation.
+- Provides a keyboard skip link, visible focus treatment, semantic chart labels, responsive overflow behavior, reduced-motion support, and consistent status and error presentation.
+- Uses the live health contract on System Status instead of presenting nonfunctional configuration controls.
 
 ### Backend
 
@@ -53,6 +55,7 @@ SQLAlchemy persistence layer
 - Keep route handlers thin and place business rules in dedicated service modules.
 - Uses structured English errors for application, request-validation, and database failures.
 - Loads application, database, and CORS settings from environment variables.
+- Rejects wildcard CORS in production, bounds declared request bodies, emits no-store and browser hardening headers, and returns structured errors without database internals.
 - Resolves every operational request to an isolated simulation session through `X-RailOps-Session`; new session UUIDs receive the default 20-train, 5-platform scenario.
 - Keeps scenario generation and record mutation in service modules; route handlers remain transport-focused.
 - Keeps optimization in `app/ai`: a custom CSP uses MRV, recursive backtracking, and forward checking; FCFS provides a deterministic baseline; OR-Tools CP-SAT uses optional intervals and non-overlap constraints; an independent validator rechecks all persisted assignments.
@@ -137,7 +140,7 @@ The session resolver looks up the public workspace UUID or creates an isolated n
 
 The browser validates and retains its generated UUID in local storage, so navigation and refresh reuse the same workspace. Malformed stored identifiers are replaced locally; the backend independently validates every header. Archived or expired sessions are rejected, while sessions with no expiry remain persistent. Database exceptions trigger request-session rollback, emit server-side exception logs with the request method and path, and return a structured `503 DATABASE_ERROR` without exposing internal details.
 
-## Phase 7 API surface
+## Release-candidate API surface
 
 ```text
 GET/POST       /api/trains
@@ -167,6 +170,18 @@ Generate reads current session resources and persists actual solver assignments.
 
 Analytics reads the authoritative persisted plan and simulation state. Delay metrics come from assignments; processing count comes from the simulation minute; platform utilization comes from occupancy intervals and the plan horizon; active conflicts come from active incidents and RED route decisions; feasibility requires a feasible solver outcome plus both validation layers. Decision explanations reuse compatibility, availability, length, type, delay, overlap, route reservation, inference, and replanning facts rather than generated claims.
 
+## Release security and isolation
+
+The API validates request shapes and domain bounds before service execution. Declared bodies larger than `MAX_REQUEST_BODY_BYTES` receive a structured 413 response. API responses are non-cacheable and carry `X-Content-Type-Options`, `X-Frame-Options`, `Referrer-Policy`, and a restrictive `Permissions-Policy`. Production CORS requires explicit origins.
+
+Scenario restore deletes and recreates records only inside the resolved workspace. No global database reset or destructive administration endpoint is exposed. Plan version checks and simulation revisions prevent stale writes. Solver requests are bounded by schema-level search and time limits.
+
+The browser-generated workspace UUID is deliberately described as isolation rather than authentication. A public multi-user production service still requires server-issued identity, authorization, expiry, rate limiting, abuse controls, and audit operations.
+
+## Integration verification
+
+`backend/tests/test_phase8_release.py` exercises the user-visible chain across module boundaries: initialize a workspace, read records, generate, validate and apply a schedule, read routed movements, control simulation, create an incident, calculate a revision, apply it, and inspect analytics plus decision evidence. Existing focused suites validate CSP, backtracking behavior, MRV/forward-checking outcomes, CP-SAT status handling, A*, reservations, inference, migrations, and session isolation.
+
 ## Quality boundaries
 
 - Business and optimization logic must be testable independently of HTTP and UI layers.
@@ -183,7 +198,7 @@ Analytics reads the authoritative persisted plan and simulation state. Delay met
 - Vercel hosts the frontend.
 - Render hosts the FastAPI backend.
 - PostgreSQL provides persistent production storage.
-- Cross-origin access and public API base URLs will be configured through environment variables.
+- Cross-origin access and public API base URLs are configured through environment variables.
 
 ## Evolution policy
 

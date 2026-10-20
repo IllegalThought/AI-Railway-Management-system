@@ -4,7 +4,7 @@ Last updated: 2026-10-20
 
 ## Current status
 
-Phases 1 through 7 are complete and validated. RailOps AI now includes persisted operational analytics, consistent three-engine benchmarks, evidence-backed decision insights, and a refined analytics and Overview experience on top of the live simulation and dynamic replanning workflows.
+Phases 1 through 8 are complete and validated. RailOps AI is a release candidate with an end-to-end tested operational workflow, verified AI algorithms, release security controls, refined responsive UI, schema compatibility gates, and complete project and deployment documentation.
 
 ## Phase tracking
 
@@ -18,6 +18,7 @@ Phases 1 through 7 are complete and validated. RailOps AI now includes persisted
 | Phase 5 | Complete | NetworkX topology, custom A*, track and switch reservations, forward-chaining inference, combined plan validation, and interactive Network Monitor | `backend/app/ai/routing.py`, `backend/app/ai/inference.py`, `backend/app/services/network.py`, `backend/tests/test_phase5_network.py`, `frontend/components/network/` |
 | Phase 6 | Complete | Persisted backend simulation clock, validated live movement state, incident management, committed-movement-safe dynamic replanning, schedule comparison, Live Operations, and Incident Center | `backend/app/services/simulation.py`, `backend/app/services/incidents.py`, `backend/tests/test_phase6_simulation.py`, `frontend/components/live/`, `frontend/components/incidents/` |
 | Phase 7 | Complete | Actual operational metrics, persisted FCFS/CSP/CP-SAT benchmarks, decision explanations, incident-change rationales, Recharts analytics, and measured Overview KPIs | `backend/app/services/analytics.py`, `backend/app/api/analytics.py`, `backend/tests/test_phase7_analytics.py`, `frontend/components/analytics/`, `frontend/lib/analytics.test.ts` |
+| Phase 8 | Complete | Full workflow integration, algorithm verification, UI/accessibility refinement, public-demo security review, release documentation, and deployment validation | `backend/tests/test_phase8_release.py`, `backend/app/main.py`, `frontend/components/settings/`, `README.md`, `docs/` |
 
 ## Completed
 
@@ -81,13 +82,19 @@ Phases 1 through 7 are complete and validated. RailOps AI now includes persisted
 - Added dynamic CSP replanning from live station state with stale state/plan rejection, locked completed and started assignments, exact preservation of committed route reservations, independent platform and route validation, and explicit infeasibility responses.
 - Completed Live Operations and Incident Center with real API controls, backend-driven progress animation, platform/resource views, incident reporting, affected-train inspection, before/after comparison, and validated revised-plan apply workflow.
 - Added Phase 6 tests covering control state transitions, backend time progression, occupancy projection, delay mutation, platform closures, replanning, stale rejection, committed movement preservation, and visitor-session isolation.
+- Added a Phase 8 end-to-end API regression covering workspace initialization, train reads, CSP generation, combined validation, plan apply, route monitoring, simulation start/pause, incident creation, dynamic replanning, revised-plan apply, analytics, and decision insights.
+- Added a configurable 1 MiB declared request-body ceiling, structured 413 errors, API no-store responses, and browser hardening headers.
+- Replaced the placeholder Settings experience with a live System Status page and removed phase-number copy from user-facing runtime messages.
+- Added keyboard skip navigation, global visible focus treatment, tabular table numerals, semantic chart labels, and consistent release-state presentation.
+- Added the root README plus architecture, algorithm, API, deployment, report, syllabus, and viva documentation required for the release candidate.
 
 ## Known gaps
 
 - Track capacity greater than one is represented in topology data but Phase 6 movement reservations remain exclusive.
-- Deployment service manifests are not part of Phase 1.
+- Deployment service manifests are not included; deployment commands and environment contracts are documented for Vercel and Render.
 - General assignment CRUD and arbitrary event-management APIs are not implemented; assignments remain governed by the validated scheduling lifecycle.
-- Settings remains a later-phase shell destination.
+- Demo workspaces are isolated by UUID but do not provide authentication, authorization, rate limiting, or server-issued session expiry.
+- Request size enforcement uses the declared `Content-Length`; an upstream proxy should also enforce body limits for chunked requests.
 
 ## Phase 1 validation
 
@@ -226,6 +233,29 @@ Phases 1 through 7 are complete and validated. RailOps AI now includes persisted
 - Added an upgrade regression test that creates a real Phase 6 database with an existing applied plan, proves the verifier detects the pending column, upgrades through Phase 7, confirms the plan and nullable timing remain readable, calls Analytics and simulation state, and generates a new timed schedule.
 - Refined frontend failure states so backend connectivity, database failures, invalid sessions, Analytics endpoint failures, and legitimate empty Analytics data are presented separately. Overview remains operational when only Analytics fails.
 - Live verification against the existing applied-plan session returned HTTP 200 for Health, Overview, Current Schedule, Network Monitor, Simulation State, Incidents, and Analytics. A persisted three-engine benchmark returned FCFS `FEASIBLE`, CSP `FEASIBLE`, and CP-SAT `OPTIMAL`; the subsequent Analytics read returned the real delays, five platform utilization rows, measured execution times, and 20 decision explanations.
+
+## Phase 8 validation
+
+- `.venv/bin/python -m compileall -q app tests alembic`: passed.
+- `.venv/bin/pytest -q`: passed (60 tests; 7 upstream Python 3.14/Starlette/SQLite deprecation warnings).
+- The Phase 8 complete operational workflow and security regression tests passed (2 tests).
+- The active SQLite database remains at Alembic `20261020_0006`, matches the ORM metadata, and resolves to `/Users/panda/railops-ai/backend/railops.db`.
+- Fresh SQLite migration from an empty database through `20261020_0006`, schema verification, and demonstration seed initialization passed in an isolated temporary directory.
+- `npm test`: passed (12 tests).
+- `npm run typecheck`: passed.
+- `npm run lint`: passed with no warnings.
+- `npm run build`: passed; all eight application pages and the not-found route were statically generated.
+- Secret and tracked-runtime-data audit found only the intended `.env.example`; no database file, local environment file, `.next`, or `node_modules` content is tracked.
+- English-language scan found no Devanagari user-facing content.
+- `git diff --check`: passed.
+
+## Phase 8 handoff
+
+- The release candidate completes the requested Phases 1–8 workflow and stops here; no subsequent phase was started.
+- Apply migrations and pass `python -m app.database.verify_schema` before every backend release.
+- Use managed PostgreSQL, exact HTTPS CORS origins, and the documented Vercel/Render environment variables for deployment.
+- Before unrestricted public use, add authentication, authorization, server-issued session expiry, rate limiting, and proxy-level request-body enforcement.
+- Runtime solver timings are measured rather than guaranteed; repeat benchmarks on the target deployment when performance evidence is needed.
 
 ## Update policy
 

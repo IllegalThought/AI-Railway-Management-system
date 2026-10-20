@@ -1,2 +1,2 @@
-"""Reserved for future AI and optimization implementations."""
+"""Scheduling, routing, validation, and inference algorithms for RailOps AI."""
 

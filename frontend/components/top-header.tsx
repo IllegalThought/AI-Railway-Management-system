@@ -16,7 +16,6 @@ export function TopHeader({ onMenuOpen }: { onMenuOpen: () => void }) {
       </div>
       <div className="flex shrink-0 items-center gap-3">
         <div className="hidden items-center gap-2 rounded-md border border-slate-800 bg-slate-900/60 px-3 py-2 text-xs text-slate-400 sm:flex"><ShieldCheck className="size-3.5 text-teal-300" /><span>Simulation mode</span></div>
-        <div className="grid size-9 place-items-center rounded-full border border-slate-700 bg-slate-800 text-xs font-semibold text-slate-200" aria-label="Operations user">OP</div>
       </div>
     </header>
   );

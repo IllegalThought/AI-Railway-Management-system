@@ -9,7 +9,7 @@ def test_health_endpoint_reports_api_and_database_status(client) -> None:
     assert response.json() == {
         "status": "ok",
         "service": "RailOps AI API",
-        "version": "0.1.0",
+        "version": "0.8.0",
         "environment": "test",
         "database": "available",
         "message": "RailOps AI API is operational.",

@@ -52,7 +52,7 @@ def generate(data: GenerateScheduleRequest, database: DatabaseSession, simulatio
 @router.post("/validate", response_model=ValidateScheduleResponse, responses={404: {"model": ErrorResponse}, 409: {"model": ErrorResponse}})
 def validate(data: PlanActionRequest, database: DatabaseSession, simulation_session: ActiveSession) -> ValidateScheduleResponse:
     plan, issues = schedules.validate_plan(database, simulation_session, data.plan_id, data.version)
-    return ValidateScheduleResponse(plan=plan_response(database, plan), valid=not issues, issues=[ValidationIssueResponse.model_validate(item.__dict__) for item in issues], message="All platform constraints and modeled route reservations passed Phase 5 validation." if not issues else f"Validation found {len(issues)} platform or route constraint issue(s).")
+    return ValidateScheduleResponse(plan=plan_response(database, plan), valid=not issues, issues=[ValidationIssueResponse.model_validate(item.__dict__) for item in issues], message="All platform constraints and modeled route reservations passed validation." if not issues else f"Validation found {len(issues)} platform or route constraint issue(s).")
 
 
 @router.post("/apply", response_model=ApplyScheduleResponse, responses={404: {"model": ErrorResponse}, 409: {"model": ErrorResponse}})

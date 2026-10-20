@@ -22,12 +22,18 @@ class Settings(BaseSettings):
 
     app_env: str = Field(default="development", validation_alias="APP_ENV")
     app_name: str = Field(default="RailOps AI API", validation_alias="APP_NAME")
-    app_version: str = Field(default="0.1.0", validation_alias="APP_VERSION")
+    app_version: str = Field(default="0.8.0", validation_alias="APP_VERSION")
     database_url: str = Field(
         default=f"sqlite:///{BACKEND_ROOT / 'railops.db'}", validation_alias="DATABASE_URL"
     )
     backend_cors_origins: str = Field(
         default="http://localhost:3000", validation_alias="BACKEND_CORS_ORIGINS"
+    )
+    max_request_body_bytes: int = Field(
+        default=1_048_576,
+        ge=1_024,
+        le=10_485_760,
+        validation_alias="MAX_REQUEST_BODY_BYTES",
     )
 
     @field_validator("app_env")

@@ -108,7 +108,7 @@ def test_schedule_api_generate_validate_apply_and_reject_stale_version(client) -
     validated = client.post("/api/schedules/validate", headers=headers, json={"plan_id": first["id"], "version": first["version"]})
     assert validated.status_code == 200
     assert validated.json()["valid"] is True
-    assert "Phase 5" in validated.json()["message"]
+    assert "modeled route reservations passed validation" in validated.json()["message"]
 
     applied = client.post("/api/schedules/apply", headers=headers, json={"plan_id": first["id"], "version": first["version"]})
     assert applied.status_code == 200

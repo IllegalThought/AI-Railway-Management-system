@@ -34,8 +34,9 @@ Operational endpoints include:
 - train CRUD at `/api/trains`;
 - platform reads and updates at `/api/platforms`;
 - scenario discovery and restore at `/api/scenarios`;
-- real workspace metrics at `/api/overview`.
-- schedule generation, validation, provisional apply, and current-plan reads at `/api/schedules`.
+- real workspace metrics at `/api/overview`;
+- schedule generation, combined platform/route validation, apply, and current-plan reads at `/api/schedules`;
+- route state at `/api/network`, simulation controls at `/api/simulation`, incidents and replanning at `/api/incidents`, and measured analytics at `/api/analytics`.
 
 `alembic upgrade head` is the preferred schema-management command. Run `python -m app.database.verify_schema` after every migration; it fails on a missing table or column, a pending revision, model/schema drift, or a relative/missing active SQLite path. The initialization command is safe to rerun and can create the idempotent synthetic demonstration dataset with `--seed`.
 
@@ -55,6 +56,7 @@ python -m app.database.verify_schema
 - `APP_VERSION`: API version exposed through health and OpenAPI.
 - `DATABASE_URL`: SQLAlchemy URL. The local default is anchored to `backend/railops.db` regardless of the launch working directory; deployment can use `postgresql+psycopg://...`.
 - `BACKEND_CORS_ORIGINS`: comma-separated allowed origins. Wildcard origins are rejected in production.
+- `MAX_REQUEST_BODY_BYTES`: declared request-body ceiling; defaults to 1 MiB.
 - `NEXT_PUBLIC_API_BASE_URL`: non-secret frontend API origin, without an `/api` suffix.
 
 All schedule and occupancy values are integer minutes. Intervals are half-open: `[start, end)`. An interval occupies its start minute and excludes its end minute, allowing adjacent assignments to meet without overlapping.
