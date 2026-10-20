@@ -1,6 +1,6 @@
 # RailOps AI Backend
 
-This FastAPI service is the Phase 1 foundation for the RailOps AI synthetic railway operations platform. It is not a certified railway signaling system.
+This FastAPI service provides the persistence and operational-data APIs for the RailOps AI synthetic railway operations platform. It is not a certified railway signaling system.
 
 ## Requirements
 
@@ -26,6 +26,15 @@ uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
 
 The API documentation is available at `http://127.0.0.1:8000/docs`, and the health endpoint is available at `http://127.0.0.1:8000/api/health`.
 
+Operational requests require an `X-RailOps-Session` header containing a UUID. The frontend generates and retains this identifier in browser storage. An unknown UUID creates an isolated workspace populated with the 20-train, 5-platform normal-traffic scenario. Train and platform changes persist within that workspace.
+
+Phase 3 endpoints include:
+
+- train CRUD at `/api/trains`;
+- platform reads and updates at `/api/platforms`;
+- scenario discovery and restore at `/api/scenarios`;
+- real workspace metrics at `/api/overview`.
+
 `alembic upgrade head` is the preferred schema-management command. The initialization command is safe to rerun and can create the idempotent synthetic demonstration dataset with `--seed`.
 
 ## Tests
@@ -43,7 +52,7 @@ pytest
 - `APP_VERSION`: API version exposed through health and OpenAPI.
 - `DATABASE_URL`: SQLAlchemy URL. The local default is `sqlite:///./railops.db`; deployment can use `postgresql+psycopg://...`.
 - `BACKEND_CORS_ORIGINS`: comma-separated allowed origins. Wildcard origins are rejected in production.
-- `NEXT_PUBLIC_API_BASE_URL`: non-secret frontend API base URL reserved for the future frontend.
+- `NEXT_PUBLIC_API_BASE_URL`: non-secret frontend API origin, without an `/api` suffix.
 
 All schedule and occupancy values are integer minutes. Intervals are half-open: `[start, end)`. An interval occupies its start minute and excludes its end minute, allowing adjacent assignments to meet without overlapping.
 

@@ -25,7 +25,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             allow_origins=runtime_settings.cors_origins,
             allow_credentials=True,
             allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-            allow_headers=["Authorization", "Content-Type"],
+            allow_headers=["Authorization", "Content-Type", "X-RailOps-Session"],
         )
     register_error_handlers(application)
     application.include_router(api_router)

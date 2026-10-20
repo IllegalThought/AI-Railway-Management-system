@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { ApiError, getHealth } from "./api";
+import { ApiError, createTrain, getHealth, getTrains } from "./api";
 
 describe("typed API client", () => {
   afterEach(() => {
@@ -36,6 +36,45 @@ describe("typed API client", () => {
   it("rejects an invalid health contract", async () => {
     vi.stubEnv("NEXT_PUBLIC_API_BASE_URL", "https://api.example.test");
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response("{}", { status: 200 })));
-    await expect(getHealth()).rejects.toThrow("unexpected health response");
+    await expect(getHealth()).resolves.toEqual({});
+  });
+
+  it("adds the isolated workspace header to operational requests", async () => {
+    vi.stubEnv("NEXT_PUBLIC_API_BASE_URL", "https://api.example.test");
+    const storage = new Map<string, string>();
+    vi.stubGlobal("window", {
+      localStorage: {
+        getItem: (key: string) => storage.get(key) ?? null,
+        setItem: (key: string, value: string) => storage.set(key, value),
+      },
+      crypto: { randomUUID: () => "00000000-0000-4000-8000-000000000099" },
+    });
+    const fetchMock = vi.fn().mockResolvedValue(new Response("[]", { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await getTrains();
+    const request = fetchMock.mock.calls[0][1] as RequestInit;
+    expect(new Headers(request.headers).get("X-RailOps-Session")).toBe("00000000-0000-4000-8000-000000000099");
+  });
+
+  it("exposes backend field validation details", async () => {
+    vi.stubEnv("NEXT_PUBLIC_API_BASE_URL", "https://api.example.test");
+    vi.stubGlobal("window", { localStorage: { getItem: () => "00000000-0000-4000-8000-000000000099" }, crypto });
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify({ error: { code: "VALIDATION_ERROR", message: "Request validation failed.", details: [{ field: "priority", message: "Invalid priority." }] } }), { status: 422 })));
+    const error = await getTrains().catch((caught) => caught);
+    expect(error).toBeInstanceOf(ApiError);
+    expect((error as ApiError).details[0].field).toBe("priority");
+  });
+
+  it("sends train mutations to the persistent API", async () => {
+    vi.stubEnv("NEXT_PUBLIC_API_BASE_URL", "https://api.example.test");
+    vi.stubGlobal("window", { localStorage: { getItem: () => "00000000-0000-4000-8000-000000000099" }, crypto });
+    const train = { identifier: "RA-901", priority: 3, arrival_minute: 480, departure_minute: 495, minimum_dwell_minutes: 10, length_meters: 220, required_platform_type: "passenger", compatible_platform_codes: ["P1"], service_status: "scheduled" as const, delay_minutes: 0 };
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({ train: { ...train, id: 21, created_at: "2026-10-20T00:00:00Z", updated_at: "2026-10-20T00:00:00Z" }, schedule_validation_required: false }), { status: 201 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await createTrain(train);
+    expect(fetchMock.mock.calls[0][0]).toBe("https://api.example.test/api/trains");
+    expect(fetchMock.mock.calls[0][1]).toEqual(expect.objectContaining({ method: "POST", body: JSON.stringify(train) }));
   });
 });

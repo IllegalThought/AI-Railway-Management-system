@@ -23,6 +23,7 @@ from app.models.enums import (
     IncidentStatus,
     PlanStatus,
     SessionStatus,
+    TrainStatus,
 )
 
 
@@ -45,6 +46,9 @@ class SimulationSession(TimestampMixin, Base):
         nullable=False,
     )
     expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    scenario_key: Mapped[str] = mapped_column(
+        String(60), default="normal-traffic", nullable=False
+    )
 
     trains: Mapped[list[Train]] = relationship(back_populates="session", cascade="all, delete-orphan")
     platforms: Mapped[list[Platform]] = relationship(back_populates="session", cascade="all, delete-orphan")
@@ -76,6 +80,12 @@ class Train(TimestampMixin, Base):
     minimum_dwell_minutes: Mapped[int] = mapped_column(Integer, nullable=False)
     length_meters: Mapped[int] = mapped_column(Integer, nullable=False)
     required_platform_type: Mapped[str | None] = mapped_column(String(40))
+    service_status: Mapped[TrainStatus] = mapped_column(
+        Enum(TrainStatus, native_enum=False, length=20),
+        default=TrainStatus.SCHEDULED,
+        nullable=False,
+    )
+    delay_minutes: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
 
     session: Mapped[SimulationSession] = relationship(back_populates="trains")
     compatible_platforms: Mapped[list[TrainPlatformCompatibility]] = relationship(back_populates="train", cascade="all, delete-orphan")
@@ -96,6 +106,8 @@ class Platform(TimestampMixin, Base):
     platform_type: Mapped[str] = mapped_column(String(40), nullable=False)
     length_meters: Mapped[int] = mapped_column(Integer, nullable=False)
     clearance_minutes: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    is_available: Mapped[bool] = mapped_column(default=True, nullable=False)
+    unavailable_reason: Mapped[str | None] = mapped_column(String(200))
 
     session: Mapped[SimulationSession] = relationship(back_populates="platforms")
     compatible_trains: Mapped[list[TrainPlatformCompatibility]] = relationship(back_populates="platform", cascade="all, delete-orphan")

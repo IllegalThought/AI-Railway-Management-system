@@ -12,6 +12,12 @@ class PlanStatus(StrEnum):
     ARCHIVED = "archived"
 
 
+class TrainStatus(StrEnum):
+    SCHEDULED = "scheduled"
+    DELAYED = "delayed"
+    CANCELLED = "cancelled"
+
+
 class IncidentSeverity(StrEnum):
     LOW = "low"
     MEDIUM = "medium"
@@ -31,4 +37,8 @@ class EventType(StrEnum):
     PLAN_CREATED = "plan_created"
     ASSIGNMENT_CREATED = "assignment_created"
     INCIDENT_REPORTED = "incident_reported"
+    SCENARIO_RESTORED = "scenario_restored"
+    TRAIN_UPDATED = "train_updated"
+    TRAIN_DELETED = "train_deleted"
+    PLATFORM_UPDATED = "platform_updated"
 

@@ -3,108 +3,40 @@
 import { useCallback, useEffect, useState } from "react";
 import { Activity, AlertTriangle, Clock3, Database, RefreshCw, Server, TrainFront } from "lucide-react";
 
+import { KpiCard } from "@/components/overview/kpi-card";
 import { useToast } from "@/components/toast-provider";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { DataTable } from "@/components/ui/data-table";
-import { KpiCard } from "@/components/overview/kpi-card";
-import { ApiError, getApiBaseUrl, getHealth, type HealthResponse } from "@/lib/api";
+import { ApiError, getApiBaseUrl, getHealth, getOverview, type HealthResponse, type Overview } from "@/lib/api";
 
-type HealthState =
-  | { status: "loading" }
-  | { status: "available"; data: HealthResponse; checkedAt: Date }
-  | { status: "unavailable"; message: string; checkedAt: Date };
+type DashboardState = { status: "loading" } | { status: "available"; health: HealthResponse; overview: Overview; checkedAt: Date } | { status: "unavailable"; message: string; checkedAt: Date };
 
 export function OverviewDashboard() {
-  const [health, setHealth] = useState<HealthState>({ status: "loading" });
-  const { toast } = useToast();
-
-  const refreshHealth = useCallback(async (notify = false) => {
-    setHealth({ status: "loading" });
-    try {
-      const data = await getHealth();
-      setHealth({ status: "available", data, checkedAt: new Date() });
-      if (notify) toast({ title: "System status refreshed", description: "The backend health check completed successfully.", tone: "success" });
-    } catch (error) {
-      if (error instanceof DOMException && error.name === "AbortError") return;
-      const message = error instanceof ApiError ? error.message : "System status could not be loaded.";
-      setHealth({ status: "unavailable", message, checkedAt: new Date() });
-      if (notify) toast({ title: "System status unavailable", description: message, tone: "info" });
-    }
-  }, [toast]);
-
+  const [state, setState] = useState<DashboardState>({ status: "loading" }); const { toast } = useToast();
+  const load = useCallback(async (notify = false, signal?: AbortSignal, showLoading = true) => { if (showLoading) setState({ status: "loading" }); try { const [health, overview] = await Promise.all([getHealth(signal), getOverview(signal)]); setState({ status: "available", health, overview, checkedAt: new Date() }); if (notify) toast({ title: "Operational data refreshed", description: "Current workspace metrics are now displayed.", tone: "success" }); } catch (error) { if (error instanceof DOMException && error.name === "AbortError") return; const message = error instanceof ApiError ? error.message : "Operational data could not be loaded."; setState({ status: "unavailable", message, checkedAt: new Date() }); if (notify) toast({ title: "Operational data unavailable", description: message, tone: "info" }); } }, [toast]);
   useEffect(() => {
     const controller = new AbortController();
-    getHealth(controller.signal)
-      .then((data) => setHealth({ status: "available", data, checkedAt: new Date() }))
+    Promise.all([getHealth(controller.signal), getOverview(controller.signal)])
+      .then(([health, overview]) => setState({ status: "available", health, overview, checkedAt: new Date() }))
       .catch((error: unknown) => {
         if (error instanceof DOMException && error.name === "AbortError") return;
-        setHealth({ status: "unavailable", message: error instanceof ApiError ? error.message : "System status could not be loaded.", checkedAt: new Date() });
+        setState({ status: "unavailable", message: error instanceof ApiError ? error.message : "Operational data could not be loaded.", checkedAt: new Date() });
       });
     return () => controller.abort();
   }, []);
-
-  const online = health.status === "available";
-  const checkedTime = health.status !== "loading" ? health.checkedAt.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : null;
-
-  return (
-    <div className="animate-[toast-in_220ms_ease-out] space-y-6">
-      <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-end">
-        <div>
-          <div className="flex items-center gap-2"><p className="text-[11px] font-medium uppercase tracking-[0.18em] text-cyan-400/70">System overview</p><Badge tone="neutral">Synthetic simulation</Badge></div>
-          <h2 className="mt-2 text-xl font-semibold tracking-tight text-white sm:text-2xl">Operations control summary</h2>
-          <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-500">Service readiness and operational data availability across the RailOps AI workspace.</p>
-        </div>
-        <Button variant="outline" onClick={() => refreshHealth(true)} disabled={health.status === "loading"}><RefreshCw className={`size-3.5 ${health.status === "loading" ? "animate-spin" : ""}`} />Refresh status</Button>
-      </div>
-
-      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-        <KpiCard label="Backend service" value={online ? "Online" : health.status === "loading" ? "" : "Unavailable"} detail={online ? `${health.data.service} · v${health.data.version}` : health.status === "unavailable" ? health.message : "Checking service health"} icon={Server} loading={health.status === "loading"} tone={online ? "positive" : health.status === "unavailable" ? "warning" : "neutral"} />
-        <KpiCard label="Trains in service" value="—" detail="Operational API not available" icon={TrainFront} />
-        <KpiCard label="Platform occupancy" value="—" detail="Assignment API not available" icon={Activity} />
-        <KpiCard label="Active incidents" value="—" detail="Incident API not available" icon={AlertTriangle} />
-      </div>
-
-      <Card>
-        <CardHeader>
-          <div><CardTitle>System readiness</CardTitle><CardDescription>Live connectivity to the configured FastAPI service</CardDescription></div>
-          {health.status === "loading" ? <Badge><span className="mr-1.5 size-1.5 animate-pulse rounded-full bg-slate-400" />Checking</Badge> : online ? <Badge tone="positive"><span className="mr-1.5 size-1.5 rounded-full bg-teal-300" />Operational</Badge> : <Badge tone="warning"><span className="mr-1.5 size-1.5 rounded-full bg-amber-300" />Unavailable</Badge>}
-        </CardHeader>
-        <CardContent className="grid gap-px overflow-hidden rounded-b-xl bg-slate-800/70 p-0 sm:grid-cols-3">
-          <ReadinessItem icon={Server} label="API service" value={online ? health.data.status.toUpperCase() : health.status === "loading" ? "CHECKING" : "UNAVAILABLE"} available={online} />
-          <ReadinessItem icon={Database} label="Database" value={online ? health.data.database.toUpperCase() : "UNKNOWN"} available={online} />
-          <ReadinessItem icon={Clock3} label="Last check" value={checkedTime ?? "IN PROGRESS"} available={online} />
-        </CardContent>
-      </Card>
-
-      <div className="grid gap-6 xl:grid-cols-[1.25fr_0.75fr]">
-        <Card>
-          <CardHeader><div><CardTitle>Platform occupancy</CardTitle><CardDescription>Current and scheduled platform use</CardDescription></div><Badge>Unavailable</Badge></CardHeader>
-          <CardContent><DataTable columns={[{ key: "platform", label: "Platform" }, { key: "train", label: "Train" }, { key: "window", label: "Occupancy window" }, { key: "status", label: "Status", align: "right" }]} rows={[]} emptyTitle="No occupancy feed available" emptyDescription="Platform assignments cannot be displayed until an operational scheduling API is implemented." /></CardContent>
-        </Card>
-        <Card>
-          <CardHeader><div><CardTitle>Active incidents</CardTitle><CardDescription>Open and monitored disruptions</CardDescription></div><Badge>Unavailable</Badge></CardHeader>
-          <CardContent className="flex min-h-[246px] flex-col items-center justify-center text-center"><span className="grid size-10 place-items-center rounded-lg border border-slate-800 bg-slate-950/60 text-slate-500"><AlertTriangle className="size-4" /></span><p className="mt-3 text-sm font-medium text-slate-300">Incident feed not connected</p><p className="mt-1 max-w-xs text-xs leading-5 text-slate-500">No incident read endpoint exists in the current backend.</p></CardContent>
-        </Card>
-      </div>
-
-      <div className="grid gap-6 xl:grid-cols-2">
-        <Card>
-          <CardHeader><div><CardTitle>Upcoming trains</CardTitle><CardDescription>Scheduled arrivals and departures</CardDescription></div><Badge>Unavailable</Badge></CardHeader>
-          <CardContent><DataTable columns={[{ key: "train", label: "Train" }, { key: "movement", label: "Movement" }, { key: "time", label: "Time" }, { key: "platform", label: "Platform", align: "right" }]} rows={[]} emptyTitle="No timetable feed available" emptyDescription="Train records are stored by the backend, but a read endpoint is not implemented in this phase." /></CardContent>
-        </Card>
-        <Card>
-          <CardHeader><div><CardTitle>Recent activity</CardTitle><CardDescription>Latest operational events in this workspace</CardDescription></div><Badge>Unavailable</Badge></CardHeader>
-          <CardContent className="flex min-h-[246px] flex-col items-center justify-center text-center"><span className="grid size-10 place-items-center rounded-lg border border-slate-800 bg-slate-950/60 text-slate-500"><Activity className="size-4" /></span><p className="mt-3 text-sm font-medium text-slate-300">Activity feed not connected</p><p className="mt-1 max-w-xs text-xs leading-5 text-slate-500">Operational events will appear when an event API is available.</p></CardContent>
-        </Card>
-      </div>
-
-      <p className="flex items-center gap-2 border-t border-slate-800/80 pt-5 text-[11px] leading-5 text-slate-600"><span className="size-1.5 shrink-0 rounded-full bg-cyan-400/60" />RailOps AI is a synthetic decision-support simulation and is not certified railway signaling software.{!getApiBaseUrl() ? " Configure NEXT_PUBLIC_API_BASE_URL to enable backend status checks." : ""}</p>
-    </div>
-  );
+  const ready = state.status === "available"; const overview = ready ? state.overview : null; const checkedTime = state.status !== "loading" ? state.checkedAt.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : null;
+  return <div className="animate-[toast-in_220ms_ease-out] space-y-6">
+    <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-end"><div><div className="flex items-center gap-2"><p className="text-[11px] font-medium uppercase tracking-[0.18em] text-cyan-400/70">System overview</p><Badge>Synthetic simulation</Badge>{overview ? <Badge tone="positive">{overview.scenario_name}</Badge> : null}</div><h2 className="mt-2 text-xl font-semibold tracking-tight text-white sm:text-2xl">Operations control summary</h2><p className="mt-2 max-w-2xl text-sm leading-6 text-slate-500">Persistent operational data for this isolated demo workspace.</p></div><Button variant="outline" onClick={() => void load(true)} disabled={state.status === "loading"}><RefreshCw className={`size-3.5 ${state.status === "loading" ? "animate-spin" : ""}`} />Refresh data</Button></div>
+    <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4"><KpiCard label="Backend service" value={ready ? "Online" : state.status === "loading" ? "" : "Unavailable"} detail={ready ? `${state.health.service} · v${state.health.version}` : state.status === "unavailable" ? state.message : "Checking service health"} icon={Server} loading={state.status === "loading"} tone={ready ? "positive" : "warning"} /><KpiCard label="Trains in service" value={overview ? String(overview.train_count) : "—"} detail={overview ? `${overview.delayed_train_count} delayed · ${overview.scheduled_train_count} scheduled` : "Waiting for operational data"} icon={TrainFront} loading={state.status === "loading"} /><KpiCard label="Platforms available" value={overview ? `${overview.available_platform_count}/${overview.platform_count}` : "—"} detail={overview ? `${overview.unavailable_platform_count} unavailable` : "Waiting for platform data"} icon={Activity} loading={state.status === "loading"} tone={overview?.unavailable_platform_count ? "warning" : "neutral"} /><KpiCard label="Active incidents" value={overview ? String(overview.active_incident_count) : "—"} detail={overview?.active_incident_count ? "Requires operational attention" : overview ? "No active incidents" : "Waiting for incident data"} icon={AlertTriangle} loading={state.status === "loading"} tone={overview?.active_incident_count ? "warning" : "neutral"} /></div>
+    <Card><CardHeader><div><CardTitle>System readiness</CardTitle><CardDescription>Live connectivity to FastAPI and its persistence layer</CardDescription></div>{state.status === "loading" ? <Badge>Checking</Badge> : ready ? <Badge tone="positive">Operational</Badge> : <Badge tone="warning">Unavailable</Badge>}</CardHeader><CardContent className="grid gap-px overflow-hidden rounded-b-xl bg-slate-800/70 p-0 sm:grid-cols-3"><Readiness icon={Server} label="API service" value={ready ? state.health.status.toUpperCase() : "UNAVAILABLE"} available={ready} /><Readiness icon={Database} label="Database" value={ready ? state.health.database.toUpperCase() : "UNKNOWN"} available={ready} /><Readiness icon={Clock3} label="Last check" value={checkedTime ?? "IN PROGRESS"} available={ready} /></CardContent></Card>
+    <div className="grid gap-6 xl:grid-cols-[1.25fr_0.75fr]"><Card><CardHeader><div><CardTitle>Upcoming trains</CardTitle><CardDescription>Next services ordered by planned arrival</CardDescription></div>{overview ? <Badge tone="positive">Live data</Badge> : null}</CardHeader><CardContent><DataTable columns={[{ key: "train", label: "Train" }, { key: "arrival", label: "Arrival" }, { key: "departure", label: "Departure" }, { key: "status", label: "Status", align: "right" }]} rows={(overview?.upcoming_trains ?? []).map((train) => ({ train: train.identifier, arrival: formatMinute(train.arrival_minute), departure: formatMinute(train.departure_minute), status: <Badge tone={train.service_status === "delayed" ? "warning" : "positive"}>{train.service_status === "delayed" ? `Delayed ${train.delay_minutes} min` : "Scheduled"}</Badge> }))} emptyTitle="No upcoming trains" emptyDescription="This workspace has no scheduled train records." /></CardContent></Card><Card><CardHeader><div><CardTitle>Active incidents</CardTitle><CardDescription>Open and monitored disruptions</CardDescription></div><Badge tone={overview?.active_incident_count ? "warning" : "positive"}>{overview?.active_incident_count ?? 0} active</Badge></CardHeader><CardContent className="space-y-2">{overview?.active_incidents.length ? overview.active_incidents.map((incident) => <div key={incident.id} className="rounded-lg border border-slate-800 bg-slate-950/35 p-3"><div className="flex items-start justify-between gap-3"><p className="text-sm font-medium text-slate-200">{incident.title}</p><Badge tone={incident.severity === "high" || incident.severity === "critical" ? "critical" : "warning"}>{incident.severity}</Badge></div><p className="mt-2 text-xs text-slate-500">{incident.resource_code ?? "Network"} · Minute {incident.reported_minute}</p></div>) : <EmptyMessage title="No active incidents" description="The selected scenario has no open operational incidents." />}</CardContent></Card></div>
+    <div className="grid gap-6 xl:grid-cols-2"><Card><CardHeader><div><CardTitle>Platform availability</CardTitle><CardDescription>Current platform resource status</CardDescription></div>{overview ? <Badge tone={overview.unavailable_platform_count ? "warning" : "positive"}>{overview.available_platform_count} available</Badge> : null}</CardHeader><CardContent><div className="flex items-center gap-4 rounded-lg border border-slate-800 bg-slate-950/35 p-5"><div className="font-mono text-3xl font-semibold text-teal-300">{overview?.available_platform_count ?? "—"}</div><div><p className="text-sm text-slate-300">Available platforms</p><p className="mt-1 text-xs text-slate-500">Out of {overview?.platform_count ?? "—"} configured resources</p></div></div></CardContent></Card><Card><CardHeader><div><CardTitle>Recent activity</CardTitle><CardDescription>Latest persistent workspace changes</CardDescription></div><Badge>Live data</Badge></CardHeader><CardContent className="space-y-3">{overview?.recent_activity.length ? overview.recent_activity.map((event) => <div key={event.id} className="flex gap-3 border-b border-slate-800/70 pb-3 last:border-0 last:pb-0"><span className="mt-1.5 size-1.5 shrink-0 rounded-full bg-cyan-300" /><div><p className="text-sm text-slate-300">{event.message}</p><p className="mt-1 text-[11px] text-slate-600">{new Date(event.created_at).toLocaleString()}</p></div></div>) : <EmptyMessage title="No recent activity" description="Workspace changes will appear here." />}</CardContent></Card></div>
+    <p className="flex items-center gap-2 border-t border-slate-800/80 pt-5 text-[11px] leading-5 text-slate-600"><span className="size-1.5 rounded-full bg-cyan-400/60" />RailOps AI is a synthetic decision-support simulation and is not certified railway signaling software.{!getApiBaseUrl() ? " Configure NEXT_PUBLIC_API_BASE_URL to connect the backend." : ""}</p>
+  </div>;
 }
 
-function ReadinessItem({ icon: Icon, label, value, available }: { icon: typeof Server; label: string; value: string; available: boolean }) {
-  return <div className="flex items-center gap-3 bg-slate-900/80 px-5 py-4"><span className="grid size-8 place-items-center rounded-md bg-slate-950/70 text-slate-500"><Icon className="size-3.5" /></span><div><p className="text-[11px] text-slate-500">{label}</p><p className={`mt-0.5 font-mono text-xs font-medium ${available ? "text-teal-300" : "text-slate-400"}`}>{value}</p></div></div>;
-}
+function Readiness({ icon: Icon, label, value, available }: { icon: typeof Server; label: string; value: string; available: boolean }) { return <div className="flex items-center gap-3 bg-slate-900/80 px-5 py-4"><span className="grid size-8 place-items-center rounded-md bg-slate-950/70 text-slate-500"><Icon className="size-3.5" /></span><div><p className="text-[11px] text-slate-500">{label}</p><p className={`mt-0.5 font-mono text-xs font-medium ${available ? "text-teal-300" : "text-slate-400"}`}>{value}</p></div></div>; }
+function EmptyMessage({ title, description }: { title: string; description: string }) { return <div className="py-8 text-center"><p className="text-sm text-slate-300">{title}</p><p className="mt-1 text-xs text-slate-500">{description}</p></div>; }
+function formatMinute(value: number) { return `${String(Math.floor(value / 60)).padStart(2, "0")}:${String(value % 60).padStart(2, "0")}`; }

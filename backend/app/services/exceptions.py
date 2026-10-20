@@ -16,3 +16,13 @@ class RecordNotFoundError(ApplicationError):
     code = "RECORD_NOT_FOUND"
     status_code = 404
 
+
+class InvalidSessionError(ApplicationError):
+    code = "INVALID_SESSION"
+    status_code = 400
+
+
+class InvalidOperationError(ApplicationError):
+    code = "INVALID_OPERATION"
+    status_code = 409
+

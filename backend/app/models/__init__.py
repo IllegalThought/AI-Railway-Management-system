@@ -10,6 +10,7 @@ from app.models.domain import (
     TrainAssignment,
     TrainPlatformCompatibility,
 )
+from app.models.enums import TrainStatus
 
 __all__ = [
     "Incident",
@@ -22,5 +23,6 @@ __all__ = [
     "Train",
     "TrainAssignment",
     "TrainPlatformCompatibility",
+    "TrainStatus",
 ]
 

@@ -19,8 +19,8 @@ def test_database_initialization_and_seed_are_idempotent(tmp_path, monkeypatch) 
 
     with session_factory() as database:
         assert database.scalar(select(func.count()).select_from(SimulationSession)) == 1
-        assert database.scalar(select(func.count()).select_from(Platform)) == 2
-        assert database.scalar(select(func.count()).select_from(Train)) == 1
+        assert database.scalar(select(func.count()).select_from(Platform)) == 5
+        assert database.scalar(select(func.count()).select_from(Train)) == 20
     assert "created successfully" in first_message
     assert "already exists" in second_message
     engine.dispose()

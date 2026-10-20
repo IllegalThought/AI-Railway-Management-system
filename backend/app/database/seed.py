@@ -3,14 +3,8 @@ from dataclasses import dataclass
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.models import (
-    Platform,
-    SimulationSession,
-    TrackEdge,
-    TrackNode,
-    Train,
-    TrainPlatformCompatibility,
-)
+from app.models import SimulationSession
+from app.services.scenarios import restore_scenario
 
 
 DEFAULT_DEMO_SESSION_KEY = "default-demo"
@@ -36,49 +30,13 @@ def seed_demo_data(database: Session) -> SeedResult:
 
     demo = SimulationSession(
         public_id=DEFAULT_DEMO_PUBLIC_ID,
-        name="RailOps AI Demonstration",
+        name="Normal traffic demo",
         session_key=DEFAULT_DEMO_SESSION_KEY,
+        scenario_key="normal-traffic",
     )
-    platform_1 = Platform(
-        session=demo,
-        code="P1",
-        platform_type="passenger",
-        length_meters=350,
-        clearance_minutes=3,
-    )
-    platform_2 = Platform(
-        session=demo,
-        code="P2",
-        platform_type="passenger",
-        length_meters=280,
-        clearance_minutes=3,
-    )
-    entry = TrackNode(session=demo, code="N-ENTRY", name="West Entry", node_type="junction")
-    station = TrackNode(session=demo, code="N-STATION", name="Central Station", node_type="station")
-    edge = TrackEdge(
-        session=demo,
-        code="T-WEST-01",
-        from_node=entry,
-        to_node=station,
-        traversal_minutes=5,
-        capacity=1,
-        resource_group="west-approach",
-    )
-    train = Train(
-        session=demo,
-        identifier="RA-101",
-        priority=3,
-        arrival_minute=480,
-        departure_minute=495,
-        minimum_dwell_minutes=10,
-        length_meters=220,
-        required_platform_type="passenger",
-    )
-    train.compatible_platforms = [
-        TrainPlatformCompatibility(platform=platform_1),
-        TrainPlatformCompatibility(platform=platform_2),
-    ]
-    database.add_all([demo, platform_1, platform_2, entry, station, edge, train])
+    database.add(demo)
+    database.flush()
+    restore_scenario(database, demo, "normal-traffic", commit=False)
     database.commit()
     database.refresh(demo)
     return SeedResult(session_id=demo.id, created=True)

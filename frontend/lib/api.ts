@@ -7,11 +7,66 @@ export type HealthResponse = {
   message: string;
 };
 
+export type TrainStatus = "scheduled" | "delayed" | "cancelled";
+
+export type Train = {
+  id: number;
+  identifier: string;
+  priority: number;
+  arrival_minute: number;
+  departure_minute: number;
+  minimum_dwell_minutes: number;
+  length_meters: number;
+  required_platform_type: string | null;
+  compatible_platform_codes: string[];
+  service_status: TrainStatus;
+  delay_minutes: number;
+  created_at: string;
+  updated_at: string;
+};
+
+export type TrainInput = Omit<Train, "id" | "created_at" | "updated_at">;
+
+export type Platform = {
+  id: number;
+  code: string;
+  platform_type: string;
+  length_meters: number;
+  clearance_minutes: number;
+  is_available: boolean;
+  unavailable_reason: string | null;
+  compatible_train_count: number;
+  created_at: string;
+  updated_at: string;
+};
+
+export type Scenario = {
+  key: string;
+  name: string;
+  description: string;
+  train_count: number;
+  platform_count: number;
+};
+
+export type Overview = {
+  scenario_key: string;
+  scenario_name: string;
+  train_count: number;
+  scheduled_train_count: number;
+  delayed_train_count: number;
+  platform_count: number;
+  available_platform_count: number;
+  unavailable_platform_count: number;
+  active_incident_count: number;
+  upcoming_trains: Array<Pick<Train, "id" | "identifier" | "arrival_minute" | "departure_minute" | "service_status" | "delay_minutes">>;
+  active_incidents: Array<{ id: number; title: string; severity: string; status: string; resource_code: string | null; reported_minute: number }>;
+  recent_activity: Array<{ id: number; message: string; event_type: string; event_minute: number; resource_code: string | null; created_at: string }>;
+};
+
+export type ValidationDetail = { field: string | null; message: string; type?: string };
+
 export class ApiError extends Error {
-  constructor(
-    message: string,
-    public readonly status?: number,
-  ) {
+  constructor(message: string, public readonly status?: number, public readonly code?: string, public readonly details: ValidationDetail[] = []) {
     super(message);
     this.name = "ApiError";
   }
@@ -21,44 +76,51 @@ export function getApiBaseUrl() {
   return (process.env.NEXT_PUBLIC_API_BASE_URL ?? "").trim().replace(/\/$/, "");
 }
 
-function isHealthResponse(value: unknown): value is HealthResponse {
-  if (!value || typeof value !== "object") return false;
-  const health = value as Record<string, unknown>;
-  return (
-    health.status === "ok" &&
-    typeof health.service === "string" &&
-    typeof health.version === "string" &&
-    typeof health.environment === "string" &&
-    health.database === "available" &&
-    typeof health.message === "string"
-  );
+export function getWorkspaceSessionId() {
+  if (typeof window === "undefined") return "";
+  const storageKey = "railops-session-id";
+  const existing = window.localStorage.getItem(storageKey);
+  if (existing) return existing;
+  const sessionId = window.crypto.randomUUID();
+  window.localStorage.setItem(storageKey, sessionId);
+  return sessionId;
 }
 
-export async function getHealth(signal?: AbortSignal): Promise<HealthResponse> {
+async function apiRequest<T>(path: string, init: RequestInit = {}, scoped = true): Promise<T> {
   const baseUrl = getApiBaseUrl();
-  if (!baseUrl) {
-    throw new ApiError("Backend API is not configured.");
-  }
-
+  if (!baseUrl) throw new ApiError("Backend API is not configured.");
+  const headers = new Headers(init.headers);
+  headers.set("Accept", "application/json");
+  if (init.body) headers.set("Content-Type", "application/json");
+  if (scoped) headers.set("X-RailOps-Session", getWorkspaceSessionId());
   let response: Response;
   try {
-    response = await fetch(`${baseUrl}/api/health`, {
-      headers: { Accept: "application/json" },
-      cache: "no-store",
-      signal,
-    });
+    response = await fetch(`${baseUrl}${path}`, { ...init, headers, cache: "no-store" });
   } catch (error) {
     if (error instanceof DOMException && error.name === "AbortError") throw error;
     throw new ApiError("Backend API could not be reached.");
   }
-
   if (!response.ok) {
-    throw new ApiError("Backend health check failed.", response.status);
+    let payload: { error?: { message?: string; code?: string; details?: ValidationDetail[] } } = {};
+    try { payload = await response.json(); } catch { /* The status fallback remains actionable. */ }
+    throw new ApiError(payload.error?.message ?? `Request failed with status ${response.status}.`, response.status, payload.error?.code, payload.error?.details ?? []);
   }
-
-  const payload: unknown = await response.json();
-  if (!isHealthResponse(payload)) {
-    throw new ApiError("Backend returned an unexpected health response.");
-  }
-  return payload;
+  return response.json() as Promise<T>;
 }
+
+export function getHealth(signal?: AbortSignal) {
+  return apiRequest<HealthResponse>("/api/health", { signal }, false);
+}
+
+export function getTrains(signal?: AbortSignal) { return apiRequest<Train[]>("/api/trains", { signal }); }
+export function getTrain(id: number, signal?: AbortSignal) { return apiRequest<Train>(`/api/trains/${id}`, { signal }); }
+export function createTrain(data: TrainInput) { return apiRequest<{ train: Train; schedule_validation_required: boolean }>("/api/trains", { method: "POST", body: JSON.stringify(data) }); }
+export function updateTrain(id: number, data: Partial<TrainInput>) { return apiRequest<{ train: Train; schedule_validation_required: boolean }>(`/api/trains/${id}`, { method: "PATCH", body: JSON.stringify(data) }); }
+export function deleteTrain(id: number) { return apiRequest<{ message: string; deleted_id: number; schedule_validation_required: boolean }>(`/api/trains/${id}`, { method: "DELETE" }); }
+
+export function getPlatforms(signal?: AbortSignal) { return apiRequest<Platform[]>("/api/platforms", { signal }); }
+export function updatePlatform(id: number, data: Partial<Pick<Platform, "code" | "platform_type" | "length_meters" | "clearance_minutes" | "is_available" | "unavailable_reason">>) { return apiRequest<{ platform: Platform; schedule_validation_required: boolean }>(`/api/platforms/${id}`, { method: "PATCH", body: JSON.stringify(data) }); }
+
+export function getScenarios(signal?: AbortSignal) { return apiRequest<Scenario[]>("/api/scenarios", { signal }, false); }
+export function restoreScenario(key: string) { return apiRequest<{ scenario: Scenario; message: string }>(`/api/scenarios/${key}/restore`, { method: "POST" }); }
+export function getOverview(signal?: AbortSignal) { return apiRequest<Overview>("/api/overview", { signal }); }

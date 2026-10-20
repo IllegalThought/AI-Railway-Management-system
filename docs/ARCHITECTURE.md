@@ -27,25 +27,28 @@ SQLAlchemy persistence layer
 
 ## Implemented responsibilities
 
-### Frontend (Phase 2)
+### Frontend (Phases 2–3)
 
 - Presents a professional, responsive operations workspace using the Next.js App Router, React, and strict TypeScript.
 - Uses Tailwind CSS and shadcn/ui-compatible primitives as a modular design-system foundation, with Lucide icons and Recharts available for verified future datasets.
 - Provides a shared application shell with desktop and mobile navigation, a top header, consistent workspace status language, loading states, unavailable states, tables, KPI cards, and toast notifications.
 - Exposes routes for Overview, Live Operations, Dispatch Board, Network Monitor, Incident Center, Trains & Platforms, Performance Analytics, and Settings.
 - Uses `NEXT_PUBLIC_API_BASE_URL` as the public backend origin and a typed client boundary in `frontend/lib/api.ts`.
-- Calls only the implemented `GET /api/health` endpoint. UI areas that require unimplemented operational read APIs explicitly report that data is unavailable.
+- Uses a browser-generated UUID stored under `railops-session-id` and sends it as `X-RailOps-Session` on operational API requests.
+- Provides fully integrated train management, platform availability management, scenario restore, and real operational Overview metrics.
 - Keeps frontend presentation and transport concerns separate from backend domain and optimization logic.
 - Keeps all user-facing content in English and identifies the product as a synthetic simulation.
 
 ### Backend
 
 - Exposes a FastAPI application with typed Pydantic request and response models.
-- Provides `GET /api/health`, OpenAPI at `/api/openapi.json`, Swagger UI at `/docs`, and ReDoc at `/redoc`.
+- Provides health, train CRUD, platform read/update, scenario restore, and operational Overview endpoints, plus OpenAPI at `/api/openapi.json`, Swagger UI at `/docs`, and ReDoc at `/redoc`.
 - Keep route handlers thin and place business rules in dedicated service modules.
 - Uses structured English errors for application, request-validation, and database failures.
 - Loads application, database, and CORS settings from environment variables.
-- Reserves isolated packages for later AI and simulation work; no optimization, routing, or simulation behavior is implemented in Phase 1.
+- Resolves every operational request to an isolated simulation session through `X-RailOps-Session`; new session UUIDs receive the default 20-train, 5-platform scenario.
+- Keeps scenario generation and record mutation in service modules; route handlers remain transport-focused.
+- Reserves isolated packages for later AI and simulation work; no optimization or routing behavior is implemented through Phase 3.
 
 ### Persistence
 
@@ -55,7 +58,7 @@ SQLAlchemy persistence layer
 - Uses Alembic migrations for persistent schema changes.
 - Enables SQLite foreign-key enforcement for local consistency.
 
-## Phase 1 data model
+## Operational data model
 
 `SimulationSession` is the ownership boundary for visitor data. Trains, platforms, track nodes, track edges, scheduling plans, incidents, and operational events carry a session reference. Assignments and compatibility rows belong to session-owned records. Future APIs must derive the active session from a trusted session context and include it in every read and mutation filter.
 
@@ -67,6 +70,10 @@ The schema contains:
 - scheduling plans and train-to-platform assignments;
 - isolated simulation sessions;
 - incidents and append-only operational events.
+
+Phase 3 adds train service status and delay minutes, platform availability and an unavailable reason, and a scenario key on each simulation session. These fields are portable across SQLite and PostgreSQL through Alembic revision `20261020_0002`.
+
+Ready scheduling plans are not silently left valid after their assigned train or platform changes. The affected plan is returned to draft and the mutation response includes `schedule_validation_required: true`; a later scheduling phase will perform the actual revalidation.
 
 All scheduling values use integer minutes. Occupancy and horizon intervals are half-open: `[start, end)`. The start is occupied and the end is excluded, so adjacent intervals can meet at the same minute without overlapping. Database constraints and reusable Pydantic validators enforce non-empty intervals and core record validity.
 
@@ -91,17 +98,32 @@ Runtime configuration comes from environment variables. Local secret-bearing `.e
 ## Frontend data flow
 
 ```text
-Overview client component
+Overview and Trains & Platforms clients
   |
+  | browser-local workspace UUID
   v
 Typed API client (`frontend/lib/api.ts`)
   |
-  | GET {NEXT_PUBLIC_API_BASE_URL}/api/health
+  | HTTPS/JSON + X-RailOps-Session
   v
-FastAPI health route -> SQL `SELECT 1`
+FastAPI route -> session resolver -> service layer -> SQLAlchemy
 ```
 
-The health payload is validated at the client boundary before display. No operational collection endpoint exists yet, so train, assignment, incident, and event panels do not query persistence directly or synthesize placeholder records.
+The session resolver looks up the public workspace UUID or creates an isolated normal-traffic workspace on first use. All train, platform, scenario, and Overview queries include the resulting internal session ID. The frontend contains no hardcoded operational records.
+
+## Phase 3 API surface
+
+```text
+GET/POST       /api/trains
+GET/PATCH/DELETE /api/trains/{id}
+GET            /api/platforms
+GET/PATCH      /api/platforms/{id}
+GET            /api/scenarios
+POST           /api/scenarios/{key}/restore
+GET            /api/overview
+```
+
+Scenario restore deletes and recreates only records owned by the active simulation session. The five deterministic scenario definitions are normal traffic, congested station, multiple delayed trains, platform closure, and track closure.
 
 ## Quality boundaries
 
