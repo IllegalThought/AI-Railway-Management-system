@@ -1,4 +1,9 @@
 import type { Metadata } from "next";
-import { SectionPage } from "@/components/section-page";
+
+import { DispatchBoard } from "@/components/dispatch/dispatch-board";
+
 export const metadata: Metadata = { title: "Dispatch Board" };
-export default function Page() { return <SectionPage title="Dispatch Board" description="Coordinate train movements and platform assignments from a single operational workspace." />; }
+
+export default function Page() {
+  return <DispatchBoard />;
+}

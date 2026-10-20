@@ -12,6 +12,7 @@ from sqlalchemy import (
     Integer,
     String,
     Text,
+    Boolean,
     UniqueConstraint,
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -178,6 +179,13 @@ class SchedulingPlan(TimestampMixin, Base):
     status: Mapped[PlanStatus] = mapped_column(Enum(PlanStatus, native_enum=False, length=20), default=PlanStatus.DRAFT, nullable=False)
     horizon_start_minute: Mapped[int] = mapped_column(Integer, nullable=False)
     horizon_end_minute: Mapped[int] = mapped_column(Integer, nullable=False)
+    version: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    engine: Mapped[str] = mapped_column(String(20), nullable=False, default="csp")
+    solver_status: Mapped[str] = mapped_column(String(20), nullable=False, default="UNKNOWN")
+    objective_value: Mapped[int | None] = mapped_column(Integer)
+    maximum_delay_minutes: Mapped[int] = mapped_column(Integer, nullable=False, default=30)
+    is_validated: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    explanation: Mapped[str] = mapped_column(Text, nullable=False, default="")
 
     session: Mapped[SimulationSession] = relationship(back_populates="plans")
     assignments: Mapped[list[TrainAssignment]] = relationship(back_populates="plan", cascade="all, delete-orphan")
@@ -198,6 +206,8 @@ class TrainAssignment(TimestampMixin, Base):
     platform_id: Mapped[int] = mapped_column(ForeignKey("platforms.id", ondelete="RESTRICT"), nullable=False, index=True)
     occupancy_start_minute: Mapped[int] = mapped_column(Integer, nullable=False)
     occupancy_end_minute: Mapped[int] = mapped_column(Integer, nullable=False)
+    delay_minutes: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    reassigned: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
 
     plan: Mapped[SchedulingPlan] = relationship(back_populates="assignments")
     train: Mapped[Train] = relationship(back_populates="assignments")

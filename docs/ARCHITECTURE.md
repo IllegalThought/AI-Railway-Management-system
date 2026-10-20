@@ -27,7 +27,7 @@ SQLAlchemy persistence layer
 
 ## Implemented responsibilities
 
-### Frontend (Phases 2–3)
+### Frontend (Phases 2–4)
 
 - Presents a professional, responsive operations workspace using the Next.js App Router, React, and strict TypeScript.
 - Uses Tailwind CSS and shadcn/ui-compatible primitives as a modular design-system foundation, with Lucide icons and Recharts available for verified future datasets.
@@ -36,19 +36,20 @@ SQLAlchemy persistence layer
 - Uses `NEXT_PUBLIC_API_BASE_URL` as the public backend origin and a typed client boundary in `frontend/lib/api.ts`.
 - Uses a browser-generated UUID stored under `railops-session-id` and sends it as `X-RailOps-Session` on operational API requests.
 - Provides fully integrated train management, platform availability management, scenario restore, and real operational Overview metrics.
+- Provides a Dispatch Board backed by persisted solver output, with a horizontally scrollable platform timeline, interactive train selection, solver lifecycle controls, validation findings, and provisional apply state.
 - Keeps frontend presentation and transport concerns separate from backend domain and optimization logic.
 - Keeps all user-facing content in English and identifies the product as a synthetic simulation.
 
 ### Backend
 
 - Exposes a FastAPI application with typed Pydantic request and response models.
-- Provides health, train CRUD, platform read/update, scenario restore, and operational Overview endpoints, plus OpenAPI at `/api/openapi.json`, Swagger UI at `/docs`, and ReDoc at `/redoc`.
+- Provides health, train CRUD, platform read/update, scenario restore, operational Overview, and schedule lifecycle endpoints, plus OpenAPI at `/api/openapi.json`, Swagger UI at `/docs`, and ReDoc at `/redoc`.
 - Keep route handlers thin and place business rules in dedicated service modules.
 - Uses structured English errors for application, request-validation, and database failures.
 - Loads application, database, and CORS settings from environment variables.
 - Resolves every operational request to an isolated simulation session through `X-RailOps-Session`; new session UUIDs receive the default 20-train, 5-platform scenario.
 - Keeps scenario generation and record mutation in service modules; route handlers remain transport-focused.
-- Reserves isolated packages for later AI and simulation work; no optimization or routing behavior is implemented through Phase 3.
+- Keeps optimization in `app/ai`: a custom CSP uses MRV, recursive backtracking, and forward checking; FCFS provides a deterministic baseline; OR-Tools CP-SAT uses optional intervals and non-overlap constraints; an independent validator rechecks all persisted assignments.
 
 ### Persistence
 
@@ -71,11 +72,17 @@ The schema contains:
 - isolated simulation sessions;
 - incidents and append-only operational events.
 
-Phase 3 adds train service status and delay minutes, platform availability and an unavailable reason, and a scenario key on each simulation session. These fields are portable across SQLite and PostgreSQL through Alembic revision `20261020_0002`.
+Phase 3 adds train service status and delay minutes, platform availability and an unavailable reason, and a scenario key on each simulation session. Phase 4 adds plan version, engine, solver outcome, objective, maximum delay, validation state and explanation plus assignment delay and reassignment state. These fields remain portable across SQLite and PostgreSQL through Alembic revision `20261020_0003`.
 
-Ready scheduling plans are not silently left valid after their assigned train or platform changes. The affected plan is returned to draft and the mutation response includes `schedule_validation_required: true`; a later scheduling phase will perform the actual revalidation.
+Ready scheduling plans are not silently left valid after train or platform changes. Ready plans return to draft, applied plans become invalid, and the mutation response includes `schedule_validation_required: true`. The Phase 4 validator must pass again before a changed plan can be applied.
 
 All scheduling values use integer minutes. Occupancy and horizon intervals are half-open: `[start, end)`. The start is occupied and the end is excluded, so adjacent intervals can meet at the same minute without overlapping. Database constraints and reusable Pydantic validators enforce non-empty intervals and core record validity.
+
+Platform scheduling treats train arrival plus recorded delay as the earliest usable start, preserves the planned occupancy duration, and allows delay only up to the plan maximum. Platform clearance extends the reserved interval after departure for conflict checks. CP-SAT minimizes priority-weighted delay plus a fixed platform reassignment cost relative to the applied plan. Custom CSP and FCFS expose feasible results but do not claim optimality.
+
+Schedule lifecycle is `draft -> ready -> applied`, with `invalid` used when validation fails or applied inputs change and `archived` used for superseded applied plans. Every generated plan receives a monotonically increasing session-local version. Apply rejects non-latest versions, mismatched versions, and plans without current independent validation.
+
+Phase 4 validates platform allocations only. Responses and the Dispatch Board identify route reservations as provisional because route graph allocation is outside this phase.
 
 ## Repository shape
 
@@ -98,7 +105,7 @@ Runtime configuration comes from environment variables. Local secret-bearing `.e
 ## Frontend data flow
 
 ```text
-Overview and Trains & Platforms clients
+Overview, Trains & Platforms, and Dispatch Board clients
   |
   | browser-local workspace UUID
   v
@@ -111,7 +118,7 @@ FastAPI route -> session resolver -> service layer -> SQLAlchemy
 
 The session resolver looks up the public workspace UUID or creates an isolated normal-traffic workspace on first use. All train, platform, scenario, and Overview queries include the resulting internal session ID. The frontend contains no hardcoded operational records.
 
-## Phase 3 API surface
+## Phase 4 API surface
 
 ```text
 GET/POST       /api/trains
@@ -121,9 +128,15 @@ GET/PATCH      /api/platforms/{id}
 GET            /api/scenarios
 POST           /api/scenarios/{key}/restore
 GET            /api/overview
+POST           /api/schedules/generate
+POST           /api/schedules/validate
+POST           /api/schedules/apply
+GET            /api/schedules/current
 ```
 
 Scenario restore deletes and recreates only records owned by the active simulation session. The five deterministic scenario definitions are normal traffic, congested station, multiple delayed trains, platform closure, and track closure.
+
+Generate reads current session resources and persists actual solver assignments. Validate independently reloads current resources and checks the persisted plan. Apply changes lifecycle state only after validation and stale-version checks; it does not claim route validity.
 
 ## Quality boundaries
 

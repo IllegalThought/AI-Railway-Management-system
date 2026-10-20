@@ -24,7 +24,8 @@ def list_trains(database: DatabaseSession, simulation_session: ActiveSession) ->
 @router.post("", response_model=TrainMutationResponse, status_code=status.HTTP_201_CREATED, responses={409: {"model": ErrorResponse}})
 def create_train(data: TrainCreate, database: DatabaseSession, simulation_session: ActiveSession) -> TrainMutationResponse:
     train = records.create_train(database, session_id=simulation_session.id, data=data)
-    return TrainMutationResponse(train=train_response(train))
+    validation_required = records.invalidate_active_plans(database, simulation_session.id)
+    return TrainMutationResponse(train=train_response(train), schedule_validation_required=validation_required)
 
 
 @router.get("/{train_id}", response_model=TrainResponse, responses={404: {"model": ErrorResponse}})

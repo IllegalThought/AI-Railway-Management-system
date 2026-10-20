@@ -9,6 +9,8 @@ class SessionStatus(StrEnum):
 class PlanStatus(StrEnum):
     DRAFT = "draft"
     READY = "ready"
+    APPLIED = "applied"
+    INVALID = "invalid"
     ARCHIVED = "archived"
 
 

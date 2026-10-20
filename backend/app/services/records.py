@@ -138,16 +138,28 @@ def _compatibility_records(database: Session, session_id: int, platform_codes: l
 
 
 def _invalidate_ready_plans_for_train(database: Session, session_id: int, train_id: int) -> bool:
-    plans = database.scalars(select(SchedulingPlan).join(TrainAssignment).where(SchedulingPlan.session_id == session_id, SchedulingPlan.status == PlanStatus.READY, TrainAssignment.train_id == train_id)).all()
+    plans = database.scalars(select(SchedulingPlan).where(SchedulingPlan.session_id == session_id, SchedulingPlan.status.in_([PlanStatus.READY, PlanStatus.APPLIED]))).all()
     for plan in plans:
-        plan.status = PlanStatus.DRAFT
+        plan.status = PlanStatus.INVALID if plan.status == PlanStatus.APPLIED else PlanStatus.DRAFT
+        plan.is_validated = False
     return bool(plans)
 
 
 def _invalidate_ready_plans_for_platform(database: Session, session_id: int, platform_id: int) -> bool:
-    plans = database.scalars(select(SchedulingPlan).join(TrainAssignment).where(SchedulingPlan.session_id == session_id, SchedulingPlan.status == PlanStatus.READY, TrainAssignment.platform_id == platform_id)).all()
+    plans = database.scalars(select(SchedulingPlan).where(SchedulingPlan.session_id == session_id, SchedulingPlan.status.in_([PlanStatus.READY, PlanStatus.APPLIED]))).all()
     for plan in plans:
-        plan.status = PlanStatus.DRAFT
+        plan.status = PlanStatus.INVALID if plan.status == PlanStatus.APPLIED else PlanStatus.DRAFT
+        plan.is_validated = False
+    return bool(plans)
+
+
+def invalidate_active_plans(database: Session, session_id: int) -> bool:
+    plans = database.scalars(select(SchedulingPlan).where(SchedulingPlan.session_id == session_id, SchedulingPlan.status.in_([PlanStatus.READY, PlanStatus.APPLIED]))).all()
+    for plan in plans:
+        plan.status = PlanStatus.INVALID if plan.status == PlanStatus.APPLIED else PlanStatus.DRAFT
+        plan.is_validated = False
+    if plans:
+        database.commit()
     return bool(plans)
 
 

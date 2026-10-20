@@ -28,12 +28,13 @@ The API documentation is available at `http://127.0.0.1:8000/docs`, and the heal
 
 Operational requests require an `X-RailOps-Session` header containing a UUID. The frontend generates and retains this identifier in browser storage. An unknown UUID creates an isolated workspace populated with the 20-train, 5-platform normal-traffic scenario. Train and platform changes persist within that workspace.
 
-Phase 3 endpoints include:
+Operational endpoints include:
 
 - train CRUD at `/api/trains`;
 - platform reads and updates at `/api/platforms`;
 - scenario discovery and restore at `/api/scenarios`;
 - real workspace metrics at `/api/overview`.
+- schedule generation, validation, provisional apply, and current-plan reads at `/api/schedules`.
 
 `alembic upgrade head` is the preferred schema-management command. The initialization command is safe to rerun and can create the idempotent synthetic demonstration dataset with `--seed`.
 

@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { ApiError, createTrain, getHealth, getTrains } from "./api";
+import { ApiError, applySchedule, createTrain, generateSchedule, getHealth, getTrains, validateSchedule } from "./api";
 
 describe("typed API client", () => {
   afterEach(() => {
@@ -76,5 +76,24 @@ describe("typed API client", () => {
     await createTrain(train);
     expect(fetchMock.mock.calls[0][0]).toBe("https://api.example.test/api/trains");
     expect(fetchMock.mock.calls[0][1]).toEqual(expect.objectContaining({ method: "POST", body: JSON.stringify(train) }));
+  });
+
+  it("uses persisted plan identifiers for the scheduling lifecycle", async () => {
+    vi.stubEnv("NEXT_PUBLIC_API_BASE_URL", "https://api.example.test");
+    vi.stubGlobal("window", { localStorage: { getItem: () => "00000000-0000-4000-8000-000000000099" }, crypto });
+    const fetchMock = vi.fn().mockImplementation(async () => new Response("{}", { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await generateSchedule("cp_sat");
+    await validateSchedule({ id: 12, version: 4 });
+    await applySchedule({ id: 12, version: 4 });
+
+    expect(fetchMock.mock.calls.map((call) => call[0])).toEqual([
+      "https://api.example.test/api/schedules/generate",
+      "https://api.example.test/api/schedules/validate",
+      "https://api.example.test/api/schedules/apply",
+    ]);
+    expect(fetchMock.mock.calls[1][1]).toEqual(expect.objectContaining({ method: "POST", body: JSON.stringify({ plan_id: 12, version: 4 }) }));
+    expect(fetchMock.mock.calls[2][1]).toEqual(expect.objectContaining({ method: "POST", body: JSON.stringify({ plan_id: 12, version: 4 }) }));
   });
 });

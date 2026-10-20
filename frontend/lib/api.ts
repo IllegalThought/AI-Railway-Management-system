@@ -63,6 +63,23 @@ export type Overview = {
   recent_activity: Array<{ id: number; message: string; event_type: string; event_minute: number; resource_code: string | null; created_at: string }>;
 };
 
+export type SchedulingEngine = "csp" | "fcfs" | "cp_sat";
+export type SolverStatus = "FEASIBLE" | "OPTIMAL" | "INFEASIBLE" | "UNKNOWN" | "SEARCH_LIMIT";
+export type ScheduleAssignment = {
+  id: number; train_id: number; train_identifier: string; platform_id: number; platform_code: string;
+  priority: number; planned_arrival_minute: number; planned_departure_minute: number;
+  occupancy_start_minute: number; occupancy_end_minute: number; delay_minutes: number; reassigned: boolean;
+};
+export type SchedulePlan = {
+  id: number; name: string; version: number; lifecycle_status: "draft" | "ready" | "applied" | "invalid" | "archived";
+  solver_status: SolverStatus; engine: SchedulingEngine; horizon_start_minute: number; horizon_end_minute: number;
+  maximum_delay_minutes: number; objective_value: number | null; is_validated: boolean; is_stale: boolean;
+  route_reservations_provisional: boolean; explanation: string; assignments: ScheduleAssignment[];
+  platforms: Array<{ id: number; code: string; platform_type: string; length_meters: number; clearance_minutes: number; is_available: boolean }>;
+  created_at: string; updated_at: string;
+};
+export type ScheduleValidation = { plan: SchedulePlan; valid: boolean; issues: Array<{ code: string; message: string; train_id: number | null; platform_id: number | null }>; message: string };
+
 export type ValidationDetail = { field: string | null; message: string; type?: string };
 
 export class ApiError extends Error {
@@ -124,3 +141,8 @@ export function updatePlatform(id: number, data: Partial<Pick<Platform, "code" |
 export function getScenarios(signal?: AbortSignal) { return apiRequest<Scenario[]>("/api/scenarios", { signal }, false); }
 export function restoreScenario(key: string) { return apiRequest<{ scenario: Scenario; message: string }>(`/api/scenarios/${key}/restore`, { method: "POST" }); }
 export function getOverview(signal?: AbortSignal) { return apiRequest<Overview>("/api/overview", { signal }); }
+
+export function getCurrentSchedule(signal?: AbortSignal) { return apiRequest<SchedulePlan | null>("/api/schedules/current", { signal }); }
+export function generateSchedule(engine: SchedulingEngine) { return apiRequest<SchedulePlan>("/api/schedules/generate", { method: "POST", body: JSON.stringify({ engine, maximum_delay_minutes: 30 }) }); }
+export function validateSchedule(plan: Pick<SchedulePlan, "id" | "version">) { return apiRequest<ScheduleValidation>("/api/schedules/validate", { method: "POST", body: JSON.stringify({ plan_id: plan.id, version: plan.version }) }); }
+export function applySchedule(plan: Pick<SchedulePlan, "id" | "version">) { return apiRequest<{ plan: SchedulePlan; message: string }>("/api/schedules/apply", { method: "POST", body: JSON.stringify({ plan_id: plan.id, version: plan.version }) }); }
