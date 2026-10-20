@@ -14,7 +14,7 @@ from app.ai.scheduling import (
     solve_fcfs,
 )
 from app.ai.validation import ValidationIssue, validate_assignments
-from app.models import OperationalEvent, Platform, SchedulingPlan, SimulationSession, Train, TrainAssignment, TrainPlatformCompatibility
+from app.models import OperationalEvent, Platform, SchedulingPlan, SimulationSession, SimulationState, Train, TrainAssignment, TrainPlatformCompatibility
 from app.models.enums import EventType, PlanStatus, TrainStatus
 from app.schemas.schedules import GenerateScheduleRequest, SchedulingEngine
 from app.services.exceptions import InvalidOperationError, RecordNotFoundError
@@ -75,16 +75,16 @@ def get_plan(database: Session, session_id: int, plan_id: int) -> SchedulingPlan
 
 
 def get_current_schedule(database: Session, session_id: int) -> SchedulingPlan | None:
-    plan_id = database.scalar(select(SchedulingPlan.id).where(SchedulingPlan.session_id == session_id).order_by(SchedulingPlan.version.desc()).limit(1))
+    plan_id = database.scalar(select(SchedulingPlan.id).where(SchedulingPlan.session_id == session_id, SchedulingPlan.status != PlanStatus.ARCHIVED).order_by(SchedulingPlan.version.desc()).limit(1))
     return get_plan(database, session_id, plan_id) if plan_id is not None else None
 
 
 def is_stale(database: Session, plan: SchedulingPlan) -> bool:
-    latest = database.scalar(select(func.max(SchedulingPlan.version)).where(SchedulingPlan.session_id == plan.session_id)) or 0
+    latest = database.scalar(select(func.max(SchedulingPlan.version)).where(SchedulingPlan.session_id == plan.session_id, SchedulingPlan.status != PlanStatus.ARCHIVED)) or 0
     return plan.version != latest
 
 
-def validate_plan(database: Session, simulation_session: SimulationSession, plan_id: int, version: int) -> tuple[SchedulingPlan, list[ValidationIssue]]:
+def validate_plan(database: Session, simulation_session: SimulationSession, plan_id: int, version: int, *, locked_routes: dict | None = None) -> tuple[SchedulingPlan, list[ValidationIssue]]:
     plan = get_plan(database, simulation_session.id, plan_id)
     if plan.version != version:
         raise InvalidOperationError("The supplied schedule version does not match the persisted plan.")
@@ -95,7 +95,7 @@ def validate_plan(database: Session, simulation_session: SimulationSession, plan
     valid_solver = plan.solver_status in {SolverStatus.FEASIBLE.value, SolverStatus.OPTIMAL.value}
     if not valid_solver:
         issues.insert(0, ValidationIssue("SOLVER_RESULT", f"The solver result is {plan.solver_status}; there is no complete plan to validate."))
-    route_issues = validate_route_reservations(database, plan, platform_constraints_passed=not issues) if valid_solver else []
+    route_issues = validate_route_reservations(database, plan, platform_constraints_passed=not issues, locked_routes=locked_routes) if valid_solver else []
     issues.extend(route_issues)
     plan.route_validated = not route_issues and valid_solver and len(plan.assignments) == len(trains)
     plan.is_validated = not issues
@@ -116,5 +116,13 @@ def apply_plan(database: Session, simulation_session: SimulationSession, plan_id
     for item in prior:
         item.status = PlanStatus.ARCHIVED
     plan.status = PlanStatus.APPLIED
+    state = database.scalar(select(SimulationState).where(SimulationState.session_id == simulation_session.id))
+    if state is None:
+        state = SimulationState(session_id=simulation_session.id)
+        database.add(state)
+    state.active_plan_id = plan.id
+    if state.current_minute == 0 or state.current_minute < plan.horizon_start_minute:
+        state.current_minute = plan.horizon_start_minute
+    state.revision += 1
     database.commit()
     return get_plan(database, simulation_session.id, plan.id)

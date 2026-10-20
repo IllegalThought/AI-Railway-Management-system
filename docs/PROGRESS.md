@@ -4,7 +4,7 @@ Last updated: 2026-10-20
 
 ## Current status
 
-Phases 1 through 5 are complete and validated. RailOps AI now combines platform allocation with directed network routing, exclusive track and switch reservations, explainable movement decisions, and an interactive network monitor.
+Phases 1 through 6 are complete and validated. RailOps AI now includes a persisted deterministic live simulation, incident mutation workflows, and constraint-validated dynamic replanning on top of platform allocation and directed route reservations.
 
 ## Phase tracking
 
@@ -16,6 +16,7 @@ Phases 1 through 5 are complete and validated. RailOps AI now combines platform 
 | Phase 3 | Complete | Persistent train CRUD, platform availability, isolated scenarios, operational metrics, and full Trains & Platforms integration | `backend/app/api/`, `backend/app/services/`, `backend/tests/test_phase3_api.py`, `frontend/components/operations/` |
 | Phase 4 | Complete | CSP, FCFS, CP-SAT platform scheduling, independent validation, version-safe apply workflow, and interactive Dispatch Board | `backend/app/ai/`, `backend/app/services/schedules.py`, `backend/tests/test_phase4_scheduling.py`, `frontend/components/dispatch/` |
 | Phase 5 | Complete | NetworkX topology, custom A*, track and switch reservations, forward-chaining inference, combined plan validation, and interactive Network Monitor | `backend/app/ai/routing.py`, `backend/app/ai/inference.py`, `backend/app/services/network.py`, `backend/tests/test_phase5_network.py`, `frontend/components/network/` |
+| Phase 6 | Complete | Persisted backend simulation clock, validated live movement state, incident management, committed-movement-safe dynamic replanning, schedule comparison, Live Operations, and Incident Center | `backend/app/services/simulation.py`, `backend/app/services/incidents.py`, `backend/tests/test_phase6_simulation.py`, `frontend/components/live/`, `frontend/components/incidents/` |
 
 ## Completed
 
@@ -73,13 +74,19 @@ Phases 1 through 5 are complete and validated. RailOps AI now combines platform 
 - Completed the Network Monitor with an interactive SVG topology, directed tracks, resource/closure state, selected train route, platform train label, movement indicators, reservation intervals, and decision explanations.
 - Diagnosed the post-Phase 5 overview 503 as an unapplied `20261020_0004` migration: valid unknown browser UUIDs reached workspace initialization, which referenced the missing route-reservation tables. Applied the migration without resetting sessions, trains, platforms, or schedules.
 - Hardened integration behavior by validating archived and expired workspaces, repairing malformed browser-stored UUIDs, rolling back failed request sessions, and logging underlying SQLAlchemy exceptions while retaining the safe structured 503 response.
+- Added a persisted per-workspace simulation control row with current minute, run/pause state, 1x/2x/5x speed, optimistic revision, active plan, and backend tick timestamp through Alembic revision `20261020_0005`.
+- Added deterministic start, pause, step, reset, and speed controls. Live train position, platform occupancy, active route reservations, movement permissions, signal indications, and events are derived from the applied validated plan and backend-owned time.
+- Added incident creation and lifecycle APIs for arrival delay, departure delay, platform closure, track blockage, junction closure, and new train requests, including resource validation, severity, duration, status, description, and impact detection.
+- Added dynamic CSP replanning from live station state with stale state/plan rejection, locked completed and started assignments, exact preservation of committed route reservations, independent platform and route validation, and explicit infeasibility responses.
+- Completed Live Operations and Incident Center with real API controls, backend-driven progress animation, platform/resource views, incident reporting, affected-train inspection, before/after comparison, and validated revised-plan apply workflow.
+- Added Phase 6 tests covering control state transitions, backend time progression, occupancy projection, delay mutation, platform closures, replanning, stale rejection, committed movement preservation, and visitor-session isolation.
 
 ## Known gaps
 
-- Dynamic train motion, real-time playback, incident mutation, and capacity greater than one remain later-phase work; Phase 5 indicators represent validated simulated movement authority, not physical signaling.
+- Track capacity greater than one is represented in topology data but Phase 6 movement reservations remain exclusive.
 - Deployment service manifests are not part of Phase 1.
-- General assignment CRUD, incident management, and event-management APIs are not implemented; schedule assignments are managed only through the Phase 4 plan lifecycle.
-- Live Operations, Incident Center, Performance Analytics, and Settings remain later-phase shell destinations.
+- General assignment CRUD and arbitrary event-management APIs are not implemented; assignments remain governed by the validated scheduling lifecycle.
+- Performance Analytics and Settings remain later-phase shell destinations.
 - Recharts is available in the frontend dependency baseline, but no operational chart is rendered because there is no verified time-series endpoint in the current backend.
 
 ## Phase 1 validation
@@ -170,6 +177,25 @@ Phases 1 through 5 are complete and validated. RailOps AI now combines platform 
 - `python -m pytest -q`: passed (48 tests).
 - `npm test`: passed (9 tests).
 - `npm run typecheck` and `npm run lint`: passed.
+
+## Phase 6 validation
+
+- `.venv/bin/python -m compileall -q app tests alembic`: passed.
+- `.venv/bin/python -m pytest -q`: passed (53 tests).
+- Fresh SQLite Alembic upgrade through `20261020_0005`: passed.
+- Fresh database initialization after migration: passed.
+- `npm run typecheck`: passed.
+- `npm run lint`: passed with no warnings.
+- `npm test`: passed (9 tests).
+- `npm run build`: passed; Live Operations, Incident Center, and all application routes were statically generated.
+- `git diff --check`: passed.
+
+## Phase 6 handoff
+
+- Apply the new migration before starting the backend: `cd backend && .venv/bin/alembic upgrade head`.
+- Generate, validate, and apply a dispatch plan before starting playback. The simulation clock and current plan survive refreshes and navigation in the isolated workspace.
+- Incident replans are reviewable but are not applied automatically. The operator must apply a valid latest revision from the before/after comparison.
+- Phase 6 stops at live synthetic railway simulation, incident management, and dynamic AI replanning.
 
 ## Update policy
 

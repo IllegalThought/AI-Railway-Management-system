@@ -21,7 +21,7 @@ def load_network(database: Session, session_id: int) -> tuple[list[TrackNode], l
     return nodes, edges, blocked
 
 
-def validate_route_reservations(database: Session, plan: SchedulingPlan, *, platform_constraints_passed: bool) -> list[ValidationIssue]:
+def validate_route_reservations(database: Session, plan: SchedulingPlan, *, platform_constraints_passed: bool, locked_routes: dict[int, RouteMovement] | None = None) -> list[ValidationIssue]:
     nodes, edges, blocked = load_network(database, plan.session_id)
     graph = build_graph(nodes, edges, blocked)
     assignment_ids = [item.id for item in plan.assignments]
@@ -38,6 +38,15 @@ def validate_route_reservations(database: Session, plan: SchedulingPlan, *, plat
     for assignment in assignments:
         train = assignment.train
         platform_code = assignment.platform.code
+        locked = (locked_routes or {}).get(train.id)
+        if locked is not None:
+            copied = [Reservation(item.resource_code, item.resource_type, item.start_minute, item.end_minute, item.edge_code, item.sequence) for item in locked.reservations]
+            committed.extend(copied)
+            movement = RouteMovement(assignment_id=assignment.id, origin_node_code=locked.origin_node_code, destination_node_code=locked.destination_node_code, path_json=locked.path_json, indicator=locked.indicator, decision=locked.decision, explanation=f"Committed movement preserved. {locked.explanation}")
+            database.add(movement)
+            database.flush()
+            database.add_all([RouteReservation(movement_id=movement.id, resource_code=item.resource_code, resource_type=item.resource_type, edge_code=item.edge_code, start_minute=item.start_minute, end_minute=item.end_minute, sequence=item.sequence) for item in copied])
+            continue
         origin, destination = train.origin_node_code, train.destination_node_code
         route_reservations: list[Reservation] = []
         path_nodes: list[str] = []

@@ -20,6 +20,20 @@ class TrainStatus(StrEnum):
     CANCELLED = "cancelled"
 
 
+class SimulationRunStatus(StrEnum):
+    PAUSED = "paused"
+    RUNNING = "running"
+
+
+class IncidentType(StrEnum):
+    ARRIVAL_DELAY = "train_arrival_delay"
+    DEPARTURE_DELAY = "train_departure_delay"
+    PLATFORM_CLOSURE = "platform_closure"
+    TRACK_BLOCKAGE = "track_blockage"
+    JUNCTION_CLOSURE = "junction_closure"
+    NEW_TRAIN_REQUEST = "new_train_request"
+
+
 class IncidentSeverity(StrEnum):
     LOW = "low"
     MEDIUM = "medium"
@@ -43,4 +57,9 @@ class EventType(StrEnum):
     TRAIN_UPDATED = "train_updated"
     TRAIN_DELETED = "train_deleted"
     PLATFORM_UPDATED = "platform_updated"
+    SIMULATION_STARTED = "simulation_started"
+    SIMULATION_PAUSED = "simulation_paused"
+    SIMULATION_STEPPED = "simulation_stepped"
+    SIMULATION_RESET = "simulation_reset"
+    REPLAN_CREATED = "replan_created"
 

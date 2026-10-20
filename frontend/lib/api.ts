@@ -88,6 +88,19 @@ export type RouteReservation = { resource_code: string; resource_type: string; e
 export type NetworkMovement = { train_id: number; train_identifier: string; platform_code: string; origin_node_code: string | null; destination_node_code: string | null; path: string[]; indicator: "RED" | "YELLOW" | "GREEN"; decision: "MovementAllowed" | "MovementBlocked"; explanation: string; reservations: RouteReservation[] };
 export type NetworkMonitor = { plan_id: number | null; plan_version: number | null; route_validation_complete: boolean; nodes: NetworkNode[]; edges: NetworkEdge[]; movements: NetworkMovement[]; blocked_resources: string[]; message: string };
 
+export type LiveTrainState = { train_id: number; train_identifier: string; status: string; position: string; platform_code: string; progress_percent: number; movement_permission: string; signal: "RED" | "YELLOW" | "GREEN" };
+export type SimulationState = {
+  current_minute: number; run_status: "paused" | "running"; speed: 1 | 2 | 5; revision: number;
+  active_plan_id: number | null; active_plan_version: number | null; trains: LiveTrainState[];
+  platforms: Array<{ platform_code: string; train_identifier: string | null; occupied: boolean }>;
+  active_reservations: Array<{ train_identifier: string; resource_code: string; resource_type: string; start_minute: number; end_minute: number }>;
+  events: Array<{ id: number; event_type: string; event_minute: number; message: string; resource_code: string | null }>;
+  message: string;
+};
+export type IncidentType = "train_arrival_delay" | "train_departure_delay" | "platform_closure" | "track_blockage" | "junction_closure" | "new_train_request";
+export type Incident = { id: number; incident_type: IncidentType; affected_resource: string; start_minute: number; duration_minutes: number; severity: "low" | "medium" | "high" | "critical"; status: "open" | "monitoring" | "resolved"; description: string; title: string; affected_train_ids: number[]; created_at: string };
+export type ReplanResult = { base_plan: SchedulePlan; revised_plan: SchedulePlan; valid: boolean; infeasible_reason: string | null; preserved_train_ids: number[]; affected_train_ids: number[]; changes: Array<{ train_identifier: string; before: ScheduleAssignment | null; after: ScheduleAssignment | null; change: string }>; message: string };
+
 export type ValidationDetail = { field: string | null; message: string; type?: string };
 
 export class ApiError extends Error {
@@ -163,3 +176,9 @@ export function generateSchedule(engine: SchedulingEngine) { return apiRequest<S
 export function validateSchedule(plan: Pick<SchedulePlan, "id" | "version">) { return apiRequest<ScheduleValidation>("/api/schedules/validate", { method: "POST", body: JSON.stringify({ plan_id: plan.id, version: plan.version }) }); }
 export function applySchedule(plan: Pick<SchedulePlan, "id" | "version">) { return apiRequest<{ plan: SchedulePlan; message: string }>("/api/schedules/apply", { method: "POST", body: JSON.stringify({ plan_id: plan.id, version: plan.version }) }); }
 export function getNetworkMonitor(signal?: AbortSignal) { return apiRequest<NetworkMonitor>("/api/network/monitor", { signal }); }
+export function getSimulationState(signal?: AbortSignal) { return apiRequest<SimulationState>("/api/simulation/state", { signal }); }
+export function controlSimulation(action: "start" | "pause" | "step" | "reset", expectedRevision: number, speed?: 1 | 2 | 5) { return apiRequest<SimulationState>("/api/simulation/control", { method: "POST", body: JSON.stringify({ action, expected_revision: expectedRevision, ...(speed ? { speed } : {}) }) }); }
+export function getIncidents(signal?: AbortSignal) { return apiRequest<Incident[]>("/api/incidents", { signal }); }
+export function createIncident(data: { incident_type: IncidentType; affected_resource: string; start_minute: number; duration_minutes: number; severity: Incident["severity"]; description: string; new_train?: TrainInput }) { return apiRequest<Incident>("/api/incidents", { method: "POST", body: JSON.stringify(data) }); }
+export function updateIncidentStatus(id: number, status: Incident["status"]) { return apiRequest<Incident>(`/api/incidents/${id}`, { method: "PATCH", body: JSON.stringify({ status }) }); }
+export function replanIncident(data: { incident_id: number; base_plan_id: number; base_plan_version: number; expected_simulation_revision: number }) { return apiRequest<ReplanResult>("/api/incidents/replan", { method: "POST", body: JSON.stringify(data) }); }

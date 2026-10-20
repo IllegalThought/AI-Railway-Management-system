@@ -22,8 +22,10 @@ from app.models.enums import (
     EventType,
     IncidentSeverity,
     IncidentStatus,
+    IncidentType,
     PlanStatus,
     SessionStatus,
+    SimulationRunStatus,
     TrainStatus,
 )
 
@@ -58,6 +60,7 @@ class SimulationSession(TimestampMixin, Base):
     plans: Mapped[list[SchedulingPlan]] = relationship(back_populates="session", cascade="all, delete-orphan")
     incidents: Mapped[list[Incident]] = relationship(back_populates="session", cascade="all, delete-orphan")
     events: Mapped[list[OperationalEvent]] = relationship(back_populates="session", cascade="all, delete-orphan")
+    simulation_state: Mapped[SimulationState | None] = relationship(back_populates="session", cascade="all, delete-orphan", uselist=False)
 
 
 class Train(TimestampMixin, Base):
@@ -268,8 +271,33 @@ class Incident(TimestampMixin, Base):
     status: Mapped[IncidentStatus] = mapped_column(Enum(IncidentStatus, native_enum=False, length=20), default=IncidentStatus.OPEN, nullable=False)
     reported_minute: Mapped[int] = mapped_column(Integer, nullable=False)
     resource_code: Mapped[str | None] = mapped_column(String(80))
+    incident_type: Mapped[IncidentType] = mapped_column(Enum(IncidentType, native_enum=False, length=40), nullable=False, default=IncidentType.TRACK_BLOCKAGE)
+    start_minute: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    duration_minutes: Mapped[int] = mapped_column(Integer, nullable=False, default=30)
 
     session: Mapped[SimulationSession] = relationship(back_populates="incidents")
+
+
+class SimulationState(TimestampMixin, Base):
+    __tablename__ = "simulation_states"
+    __table_args__ = (
+        UniqueConstraint("session_id", name="uq_simulation_state_session"),
+        CheckConstraint("current_minute >= 0", name="ck_simulation_current_nonnegative"),
+        CheckConstraint("speed IN (1, 2, 5)", name="ck_simulation_speed"),
+        CheckConstraint("revision >= 0", name="ck_simulation_revision_nonnegative"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    session_id: Mapped[int] = mapped_column(ForeignKey("simulation_sessions.id", ondelete="CASCADE"), nullable=False, index=True)
+    current_minute: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    run_status: Mapped[SimulationRunStatus] = mapped_column(Enum(SimulationRunStatus, native_enum=False, length=20), nullable=False, default=SimulationRunStatus.PAUSED)
+    speed: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    revision: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    active_plan_id: Mapped[int | None] = mapped_column(ForeignKey("scheduling_plans.id", ondelete="SET NULL"))
+    last_tick_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+    session: Mapped[SimulationSession] = relationship(back_populates="simulation_state")
+    active_plan: Mapped[SchedulingPlan | None] = relationship(foreign_keys=[active_plan_id])
 
 
 class OperationalEvent(Base):

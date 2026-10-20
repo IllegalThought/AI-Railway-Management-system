@@ -11,6 +11,7 @@ from app.models import (
     RouteReservation,
     SchedulingPlan,
     SimulationSession,
+    SimulationState,
     TrackEdge,
     TrackNode,
     Train,
@@ -21,6 +22,8 @@ from app.models.enums import (
     EventType,
     IncidentSeverity,
     IncidentStatus,
+    IncidentType,
+    SimulationRunStatus,
     TrainStatus,
 )
 from app.services.exceptions import RecordNotFoundError
@@ -148,6 +151,17 @@ def restore_scenario(
 
     simulation_session.scenario_key = scenario_key
     simulation_session.name = f"{scenario.name} demo"
+    state = database.query(SimulationState).filter(SimulationState.session_id == session_id).one_or_none()
+    if state is None:
+        state = SimulationState(session_id=session_id)
+        database.add(state)
+    else:
+        state.current_minute = 0
+        state.run_status = SimulationRunStatus.PAUSED
+        state.speed = 1
+        state.active_plan_id = None
+        state.last_tick_at = None
+        state.revision += 1
     database.add(
         OperationalEvent(
             session=simulation_session,
@@ -286,6 +300,9 @@ def _add_scenario_incidents(
                 status=IncidentStatus.OPEN,
                 reported_minute=350,
                 resource_code="P3",
+                incident_type=IncidentType.PLATFORM_CLOSURE,
+                start_minute=350,
+                duration_minutes=120,
             )
         )
     elif scenario_key == "track-closure":
@@ -298,5 +315,8 @@ def _add_scenario_incidents(
                 status=IncidentStatus.OPEN,
                 reported_minute=340,
                 resource_code="T-WEST-01",
+                incident_type=IncidentType.TRACK_BLOCKAGE,
+                start_minute=340,
+                duration_minutes=120,
             )
         )
