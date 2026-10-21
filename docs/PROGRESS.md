@@ -301,3 +301,11 @@ Phases 1 through 9 are complete at repository level. RailOps AI now includes pro
 
 For each requested phase, record its scope, implementation status, validation commands, known limitations, and handoff notes. A phase may be marked complete only after its required automated checks pass.
 
+## Frontend operations-console redesign
+
+- Replaced the dark navy/cyan presentation with a light operational design system: warm gray application background, charcoal navigation, steel-blue actions, compact white panels, restrained status colors, and denser tables.
+- Reduced the application navigation to Overview, Dispatch Board, Live Operations, Network Monitor, Incident Center, and Trains & Platforms. Removed the Performance Analytics and System Status routes and their frontend-only components and API calls.
+- Refocused Overview on current train, delay, platform, incident, upcoming-service, and activity data. It now presents one actionable backend failure state and no longer includes a System readiness panel.
+- Preserved the existing scheduling, validation, application, simulation, network routing, incident replanning, scenario, train, and platform API workflows.
+- Frontend validation passed: `npm run typecheck`, `npm run lint`, `npm test` (11 tests), `npm run build` (six application routes plus not-found), and `git diff --check`.
+

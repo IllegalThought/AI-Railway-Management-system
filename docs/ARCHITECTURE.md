@@ -212,3 +212,9 @@ The browser-generated workspace UUID is deliberately described as isolation rath
 
 Update this document whenever a phase introduces or changes application boundaries, data flows, deployment topology, major dependencies, persistence decisions, or integration contracts.
 
+## Frontend workspace boundary
+
+The application shell exposes six operational workspaces: Overview, Dispatch Board, Live Operations, Network Monitor, Incident Center, and Trains & Platforms. The retired Performance Analytics and System Status pages are not part of the frontend route surface. Backend analytics and health endpoints remain available because backend capabilities and shared deployment checks are outside this UI-only simplification.
+
+Shared frontend primitives define the light enterprise palette, compact panels, tables, controls, status badges, dialogs, responsive sidebar, and page header. Workspace components continue to call the typed API client directly; optimization, routing, simulation, persistence, and incident logic remain in the backend service layer.
+

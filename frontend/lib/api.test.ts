@@ -113,10 +113,10 @@ describe("typed API client", () => {
   });
 
   it("distinguishes database, session, endpoint, and connectivity failures", () => {
-    expect(describeApiFailure(new ApiError("Database failed", 503, "DATABASE_ERROR"), "analytics").title).toBe("Database operation failed");
-    expect(describeApiFailure(new ApiError("Bad session", 400, "INVALID_SESSION"), "analytics").title).toBe("Invalid workspace session");
-    expect(describeApiFailure(new ApiError("Offline", undefined, "BACKEND_UNREACHABLE"), "analytics").title).toBe("Backend unreachable");
-    expect(describeApiFailure(new ApiError("Endpoint failed", 500, "INTERNAL_ERROR"), "analytics").title).toBe("Analytics endpoint failed");
+    expect(describeApiFailure(new ApiError("Database failed", 503, "DATABASE_ERROR")).title).toBe("Database operation failed");
+    expect(describeApiFailure(new ApiError("Bad session", 400, "INVALID_SESSION")).title).toBe("Invalid workspace session");
+    expect(describeApiFailure(new ApiError("Offline", undefined, "BACKEND_UNREACHABLE")).title).toBe("Backend unreachable");
+    expect(describeApiFailure(new ApiError("Endpoint failed", 500, "INTERNAL_ERROR")).title).toBe("Operational request failed");
   });
 
   it("sends train mutations to the persistent API", async () => {

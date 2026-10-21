@@ -5,11 +5,11 @@ import { cn } from "@/lib/utils";
 type BadgeTone = "neutral" | "positive" | "warning" | "critical" | "danger";
 
 const tones: Record<BadgeTone, string> = {
-  neutral: "border-slate-700 bg-slate-800/70 text-slate-300",
-  positive: "border-teal-400/20 bg-teal-400/10 text-teal-300",
-  warning: "border-amber-400/20 bg-amber-400/10 text-amber-300",
-  critical: "border-rose-400/20 bg-rose-400/10 text-rose-300",
-  danger: "border-rose-400/20 bg-rose-400/10 text-rose-300",
+  neutral: "border-[#D7DEE3] bg-[#F3F5F6] text-[#52616F]",
+  positive: "border-[#BCD0C2] bg-[#EDF5EF] text-[#3F6B51]",
+  warning: "border-[#E5D0A8] bg-[#FFF7E8] text-[#8A641F]",
+  critical: "border-[#E1B9B9] bg-[#FCEEEE] text-[#9B4141]",
+  danger: "border-[#E1B9B9] bg-[#FCEEEE] text-[#9B4141]",
 };
 
 export function Badge({ className, tone = "neutral", ...props }: HTMLAttributes<HTMLSpanElement> & { tone?: BadgeTone }) {

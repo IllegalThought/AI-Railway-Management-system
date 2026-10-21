@@ -18,7 +18,7 @@ function initialState(train?: Train): FormState {
   return train ? { identifier: train.identifier, priority: String(train.priority), arrival: minuteToTime(train.arrival_minute), departure: minuteToTime(train.departure_minute), dwell: String(train.minimum_dwell_minutes), length: String(train.length_meters), platformType: train.required_platform_type ?? "", compatible: train.compatible_platform_codes, status: train.service_status, delay: String(train.delay_minutes), origin: train.origin_node_code ?? "ENTRY-W", destination: train.destination_node_code ?? "EXIT-E" } : { identifier: "", priority: "3", arrival: "08:00", departure: "08:15", dwell: "10", length: "220", platformType: "passenger", compatible: [], status: "scheduled", delay: "0", origin: "ENTRY-W", destination: "EXIT-E" };
 }
 
-const inputClass = "mt-1.5 h-9 w-full rounded-md border border-slate-700 bg-slate-950/60 px-3 text-sm text-slate-200 outline-none transition focus:border-cyan-400/60 focus:ring-2 focus:ring-cyan-400/15";
+const inputClass = "mt-1.5 h-9 w-full rounded-md border border-[#C9D1D8] bg-[#F6F7F9] px-3 text-sm text-[#2D3A45] outline-none transition focus:border-[#36638A] focus:ring-2 focus:ring-[#36638A]/15";
 
 export function TrainForm({ train, platforms, onSubmit, onCancel }: { train?: Train; platforms: Platform[]; onSubmit: (data: TrainInput) => Promise<void>; onCancel: () => void }) {
   const [form, setForm] = useState(() => initialState(train));
@@ -47,7 +47,7 @@ export function TrainForm({ train, platforms, onSubmit, onCancel }: { train?: Tr
   }
 
   return <form onSubmit={submit} className="space-y-5 p-5">
-    {errors.form ? <p role="alert" className="rounded-md border border-rose-400/20 bg-rose-400/10 px-3 py-2 text-xs text-rose-300">{errors.form}</p> : null}
+    {errors.form ? <p role="alert" className="rounded-md border border-rose-400/20 bg-rose-400/10 px-3 py-2 text-xs text-[#A14343]">{errors.form}</p> : null}
     <div className="grid gap-4 sm:grid-cols-2">
       <Field label="Train identifier" error={errors.identifier}><input className={inputClass} value={form.identifier} onChange={(e) => set("identifier", e.target.value)} placeholder="RA-121" /></Field>
       <Field label="Service status" error={errors.service_status}><select className={inputClass} value={form.status} onChange={(e) => set("status", e.target.value as TrainStatus)}><option value="scheduled">Scheduled</option><option value="delayed">Delayed</option><option value="cancelled">Cancelled</option></select></Field>
@@ -61,9 +61,9 @@ export function TrainForm({ train, platforms, onSubmit, onCancel }: { train?: Tr
       <Field label="Exit point" error={errors.destination_node_code}><select className={inputClass} value={form.destination} onChange={(e) => set("destination", e.target.value)}><option value="EXIT-E">East Exit</option><option value="EXIT-W">West Exit</option></select></Field>
       {form.status === "delayed" ? <Field label="Delay (minutes)" error={errors.delay_minutes}><input type="number" min="1" className={inputClass} value={form.delay} onChange={(e) => set("delay", e.target.value)} /></Field> : null}
     </div>
-    <fieldset><legend className="text-xs font-medium text-slate-400">Compatible platforms</legend><div className="mt-2 grid gap-2 sm:grid-cols-3">{platforms.map((platform) => <label key={platform.id} className="flex items-center gap-2 rounded-md border border-slate-800 bg-slate-950/35 px-3 py-2 text-xs text-slate-300"><input type="checkbox" className="accent-cyan-400" checked={form.compatible.includes(platform.code)} onChange={(e) => set("compatible", e.target.checked ? [...form.compatible, platform.code] : form.compatible.filter((code) => code !== platform.code))} />{platform.code}<span className="ml-auto text-slate-600">{platform.length_meters} m</span></label>)}</div>{errors.compatible_platform_codes ? <p className="mt-1.5 text-xs text-rose-300">{errors.compatible_platform_codes}</p> : null}</fieldset>
-    <div className="flex justify-end gap-2 border-t border-slate-800 pt-4"><Button type="button" variant="ghost" onClick={onCancel}>Cancel</Button><Button type="submit" disabled={busy}>{busy ? "Saving…" : train ? "Save changes" : "Add train"}</Button></div>
+    <fieldset><legend className="text-xs font-medium text-[#52616F]">Compatible platforms</legend><div className="mt-2 grid gap-2 sm:grid-cols-3">{platforms.map((platform) => <label key={platform.id} className="flex items-center gap-2 rounded-md border border-[#DFE4E8] bg-[#F8F9FA] px-3 py-2 text-xs text-[#34424F]"><input type="checkbox" className="accent-[#36638A]" checked={form.compatible.includes(platform.code)} onChange={(e) => set("compatible", e.target.checked ? [...form.compatible, platform.code] : form.compatible.filter((code) => code !== platform.code))} />{platform.code}<span className="ml-auto text-[#7C8994]">{platform.length_meters} m</span></label>)}</div>{errors.compatible_platform_codes ? <p className="mt-1.5 text-xs text-[#A14343]">{errors.compatible_platform_codes}</p> : null}</fieldset>
+    <div className="flex justify-end gap-2 border-t border-[#DFE4E8] pt-4"><Button type="button" variant="ghost" onClick={onCancel}>Cancel</Button><Button type="submit" disabled={busy}>{busy ? "Saving…" : train ? "Save changes" : "Add train"}</Button></div>
   </form>;
 }
 
-function Field({ label, error, children }: { label: string; error?: string; children: React.ReactNode }) { return <label className="text-xs font-medium text-slate-400">{label}{children}{error ? <span className="mt-1.5 block text-xs font-normal text-rose-300">{error}</span> : null}</label>; }
+function Field({ label, error, children }: { label: string; error?: string; children: React.ReactNode }) { return <label className="text-xs font-medium text-[#52616F]">{label}{children}{error ? <span className="mt-1.5 block text-xs font-normal text-[#A14343]">{error}</span> : null}</label>; }

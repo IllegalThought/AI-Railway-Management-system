@@ -25,11 +25,11 @@ export function ToastProvider({ children }: { children: ReactNode }) {
         {toasts.map((item) => {
           const Icon = item.tone === "success" ? CheckCircle2 : Info;
           return (
-            <div key={item.id} className="pointer-events-auto animate-toast-in rounded-lg border border-slate-700 bg-slate-900/95 p-4 shadow-2xl shadow-black/30 backdrop-blur">
+            <div key={item.id} className="pointer-events-auto animate-toast-in rounded-lg border border-[#C9D1D8] bg-white p-4 shadow-[0_12px_30px_rgba(32,40,49,.14)]">
               <div className="flex gap-3">
-                <Icon className={`mt-0.5 size-4 shrink-0 ${item.tone === "success" ? "text-teal-300" : "text-cyan-300"}`} />
-                <div className="min-w-0 flex-1"><p className="text-sm font-medium text-slate-100">{item.title}</p>{item.description ? <p className="mt-1 text-xs leading-5 text-slate-400">{item.description}</p> : null}</div>
-                <button type="button" onClick={() => dismiss(item.id)} aria-label="Dismiss notification" className="-mr-1 -mt-1 grid size-7 place-items-center rounded text-slate-500 hover:bg-slate-800 hover:text-slate-200"><X className="size-3.5" /></button>
+                <Icon className={`mt-0.5 size-4 shrink-0 ${item.tone === "success" ? "text-[#4F7A63]" : "text-[#36638A]"}`} />
+                <div className="min-w-0 flex-1"><p className="text-sm font-medium text-[#202B36]">{item.title}</p>{item.description ? <p className="mt-1 text-xs leading-5 text-[#52616F]">{item.description}</p> : null}</div>
+                <button type="button" onClick={() => dismiss(item.id)} aria-label="Dismiss notification" className="-mr-1 -mt-1 grid size-7 place-items-center rounded text-[#687581] hover:bg-[#EDF0F2] hover:text-[#2D3A45]"><X className="size-3.5" /></button>
               </div>
             </div>
           );
